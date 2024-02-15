@@ -67,10 +67,8 @@ def draw_debug_grid(world, grid_size=2, distance=20, lifetime=30):
             for k in range(0, grid_size + 1):
                 # Calculate the location of each point in the grid
                 location = origin + carla.Location(x=i*distance, y=j*distance, z=k*distance)
-
                 # Create a string with the location coordinates
                 location_str = f"Location: {location.x}, {location.y}, {location.z}"
-                
                 # Draw the location string above the point
                 world.debug.draw_string(location + carla.Location(z=0.5), location_str, draw_shadow=False, color=carla.Color(0, 255, 0), life_time=lifetime)
 
@@ -89,8 +87,8 @@ def generate_camera_grid(sensor_data, grid_size, screen_size):
         row = i // grid_size[0]
         col = i % grid_size[0]
 
-        # Resize the camera image to fit in the grid cell
-        resized_image = cv2.resize(image, (cell_width, cell_height))
+        # Convert RGBA image to RGB and resize it to fit in the grid cell
+        resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
 
         # Calculate the coordinates to place the resized image in the grid
         start_x = col * cell_width
@@ -105,6 +103,20 @@ def generate_camera_grid(sensor_data, grid_size, screen_size):
 def rgb_callback(image, data_dict, camera_name):
     img = np.array(image.raw_data)
     img = img.reshape((image.height, image.width, 4))  # Assuming RGBA format
+    img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)  # Convert from RGBA to RGB
+    img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
+    img = np.fliplr(img)
+    data_dict[camera_name] = img
+
+def depth_callback(image, data_dict, camera_name):
+    image.convert(carla.ColorConverter.LogarithmicDepth)
+    img = np.reshape(np.copy(image.raw_data), (image.height, image.width, 4))
+    img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
+    img = np.fliplr(img)
+    data_dict[camera_name] = img
+
+def inst_callback(image, data_dict, camera_name):
+    img = np.array(image.raw_data).reshape((image.height, image.width, 4))[:, :, :3]
     img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)  # Convert from RGBA to RGB
     img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
     img = np.fliplr(img)
@@ -128,7 +140,7 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     # Spawn camera attached to anchor object
     camera = world.spawn_actor(
         camera_bp,
-        carla.Transform( carla.Location(x=0, y=0.0, z=0)),
+        carla.Transform( carla.Location(x=2, y=0.0, z=0)),
         attach_to=anchor_object)
     objects_list.append(camera)
     
@@ -170,15 +182,21 @@ def main():
         ]
 
         sensor_transforms = [
-            carla.Transform( carla.Location(x=10, y=0.0, z=20.4), carla.Rotation(yaw=45.0, pitch=0.0, roll=0.0) ),
-            carla.Transform( carla.Location(x=10, y=10, z=20.4), carla.Rotation(yaw=0.0, pitch=0.0, roll=0.0)) ,
-            carla.Transform( carla.Location(x=1.5, y=10, z=20.4), carla.Rotation(yaw=-45.0, pitch=0.0, roll=0.0)) 
+            carla.Transform( carla.Location(x=-20, y=0.0, z=20.4), carla.Rotation(yaw=45.0,  pitch=0.0, roll=0.0) ),
+            carla.Transform( carla.Location(x=-20, y=20, z=20.4),  carla.Rotation(yaw=0.0,   pitch=0.0, roll=0.0))  ,
+            carla.Transform( carla.Location(x=0, y=20, z=20.4), carla.Rotation(yaw=-45.0, pitch=0.0, roll=0.0))  
         ]
 
         # Update the sensor_data dictionary to include the different cameras sensors
         sensor_data = {'rgb_image_01': np.zeros((height, width, 4)),
                        'rgb_image_02': np.zeros((height, width, 4)),
-                       'rgb_image_03': np.zeros((height, width, 4))
+                       'rgb_image_03': np.zeros((height, width, 4)),
+                       'depth_image_01': np.zeros((height, width, 4)),
+                       'depth_image_02': np.zeros((height, width, 4)),
+                       'depth_image_03': np.zeros((height, width, 4)),
+                       'inst_image_01': np.zeros((height, width, 4)),
+                       'inst_image_02': np.zeros((height, width, 4)),
+                       'inst_image_03': np.zeros((height, width, 4))
         }
 
 
@@ -193,20 +211,24 @@ def main():
         # Draw a debug 3d grid for debugging
         draw_debug_grid(world)
 
-
         #
         ### Sensor spawning
         #
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
-        # Add more calls to spawn_camera for additional cameras
 
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
+
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
         
-
         pygame.init() 
 
-        size = (800, 600)
+        size = (1920, 1080)
         pygame.display.set_caption("CARLA survailance system")
         screen = pygame.display.set_mode(size)
 
@@ -232,7 +254,7 @@ def main():
             world.tick()
 
             # Generate camera grid view
-            grid_view = generate_camera_grid(sensor_data, (2, 2), size)  # Pass screen size
+            grid_view = generate_camera_grid(sensor_data, (3, 3), size)  # Pass screen size
 
             # Update the display and check for the quit event
             pygame.display.flip()
