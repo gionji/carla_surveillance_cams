@@ -75,8 +75,70 @@ def draw_debug_grid(world, grid_size=2, distance=20, lifetime=30):
                 world.debug.draw_string(location + carla.Location(z=0.5), location_str, draw_shadow=False, color=carla.Color(0, 255, 0), life_time=lifetime)
 
 
+def generate_camera_grid(sensor_data, grid_size, screen_size):
+    # Calculate the dimensions of each grid cell
+    cell_width = screen_size[1] // grid_size[0]
+    cell_height = screen_size[0] // grid_size[1]
+
+    # Create a blank canvas to hold the grid view
+    grid_view = np.zeros((screen_size[0], screen_size[1], 3), dtype=np.uint8)
+
+    # Iterate over each camera image in the sensor_data dictionary
+    for i, (name, image) in enumerate(sensor_data.items()):
+        # Calculate the row and column indices for this camera image in the grid
+        row = i // grid_size[0]
+        col = i % grid_size[0]
+
+        # Resize the camera image to fit in the grid cell
+        resized_image = cv2.resize(image, (cell_width, cell_height))
+
+        # Calculate the coordinates to place the resized image in the grid
+        start_x = col * cell_width
+        start_y = row * cell_height
+
+        # Insert the resized image into the grid view canvas
+        grid_view[start_y:start_y + cell_height, start_x:start_x + cell_width] = resized_image
+
+    return grid_view
+
+
+def rgb_callback(image, data_dict, camera_name):
+    img = np.array(image.raw_data)
+    img = img.reshape((image.height, image.width, 4))  # Assuming RGBA format
+    img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)  # Convert from RGBA to RGB
+    img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
+    img = np.fliplr(img)
+    data_dict[camera_name] = img
+
+
+def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor_type, fov_str, sensor_data, objects_list, callback, name):
+    # Spawn anchor object
+    anchor_object = world.spawn_actor(
+        reference_actor_bp,
+        transform)
+    objects_list.append(anchor_object)
+    
+    # Draw annotation
+    draw_debug_annotations(world, transform)
+    
+    # Set up camera blueprint
+    camera_bp = blueprint_library.find(sensor_type)
+    camera_bp.set_attribute('fov', fov_str)
+    
+    # Spawn camera attached to anchor object
+    camera = world.spawn_actor(
+        camera_bp,
+        carla.Transform( carla.Location(x=0, y=0.0, z=0)),
+        attach_to=anchor_object)
+    objects_list.append(camera)
+    
+    # Attach listener to the camera
+    camera.listen(lambda image: callback(image, sensor_data, name))
+
+
+
 def main():
-    camera_list = []
+    objects_list = []
 
     try:
         # First of all, we need to create the client that will send the requests
@@ -101,7 +163,7 @@ def main():
         # Set FOV for all cameras
         fov_str = str(fov_degrees)
 
-        sensor_names = [
+        sensor_type_names = [
             blueprint_library.find('sensor.camera.rgb'),
             blueprint_library.find('sensor.camera.depth'),
             blueprint_library.find('sensor.camera.instance_segmentation')
@@ -113,8 +175,12 @@ def main():
             carla.Transform( carla.Location(x=1.5, y=10, z=20.4), carla.Rotation(yaw=-45.0, pitch=0.0, roll=0.0)) 
         ]
 
-        # Update the sensor_data dictionary to include the depth_image, gnss and imu keys and default values
-        sensor_data = {'rgb_image': np.zeros((height, width, 4)),'depth_image': np.zeros((height, width, 4))}
+        # Update the sensor_data dictionary to include the different cameras sensors
+        sensor_data = {'rgb_image_01': np.zeros((height, width, 4)),
+                       'rgb_image_02': np.zeros((height, width, 4)),
+                       'rgb_image_03': np.zeros((height, width, 4))
+        }
+
 
         # Move the spectator close to the spawned vehicle
         spectator = world.get_spectator()
@@ -124,40 +190,17 @@ def main():
         # https://carla.readthedocs.io/en/latest/catalogue_props/
         rererence_actor_bp = random.choice(blueprint_library.filter('static.prop.glasscontainer'))
 
-
-        ## Anchor
-        camera_anchor_object = world.spawn_actor(
-            rererence_actor_bp,
-            sensor_transforms[0])
-        
-        camera_list.append(camera_anchor_object)
-
-        ## Draw annotation in the spectator
-        draw_debug_annotations(world, sensor_transforms[0])
+        # Draw a debug 3d grid for debugging
         draw_debug_grid(world)
 
-        camera_bp = sensor_names[0]    
-        camera_bp.set_attribute('fov', fov_str)
-        camera = world.spawn_actor(
-            camera_bp,
-            carla.Transform( carla.Location(x=0, y=0.0, z=0)),
-            attach_to=camera_anchor_object)
 
-        camera_list.append(camera)
-
-        def rgb_callback(image, data_dict):
-            img = np.array(image.raw_data)
-            img = img.reshape((image.height, image.width, 4))  # Assuming RGBA format
-            img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)  # Convert from RGBA to RGB
-            img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
-            img = np.fliplr(img)
-            data_dict['rgb_image'] = img
-
-        # We'll add all the other sensors' data into this dictionary later.
-        # For now, we've added the camera feed 
-        sensor_data = {'rgb_image': np.zeros((height, width, 4))}
-
-        camera.listen(lambda image: rgb_callback(image, sensor_data))
+        #
+        ### Sensor spawning
+        #
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
+        # Add more calls to spawn_camera for additional cameras
 
         
 
@@ -188,10 +231,13 @@ def main():
             # tick the simulation
             world.tick()
 
+            # Generate camera grid view
+            grid_view = generate_camera_grid(sensor_data, (2, 2), size)  # Pass screen size
+
             # Update the display and check for the quit event
             pygame.display.flip()
             pygame.display.update()
-            screen.blit(pygame.surfarray.make_surface(sensor_data['rgb_image']), (0, 0)) # To display with Pygame
+            screen.blit(pygame.surfarray.make_surface(grid_view), (0, 0)) # To display with Pygame
 
             # Better to use OpenCV to display both RGB and Depth Image
 
@@ -206,7 +252,7 @@ def main():
 
     finally:
         print('destroying actors')
-        for camera in camera_list:
+        for camera in objects_list:
             camera.destroy()        
         print('done.')
 
