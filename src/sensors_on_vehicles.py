@@ -148,6 +148,35 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     camera.listen(lambda image: callback(image, sensor_data, name))
 
 
+def spawn_camera_to_existing_object(world, blueprint_library, reference_actor, transform, sensor_type, fov_str, sensor_data, objects_list, callback, name):
+    # Set up camera blueprint
+    camera_bp = blueprint_library.find(sensor_type)
+    camera_bp.set_attribute('fov', fov_str)
+    
+    # Spawn camera attached to anchor object
+    camera = world.spawn_actor(
+        camera_bp,
+        transform,
+        attach_to=reference_actor)
+    objects_list.append(camera)
+    
+    # Attach listener to the camera
+    camera.listen(lambda image: callback(image, sensor_data, name))
+
+
+# Define the drones blueprint array
+drones_blueprint_array = [
+    'static.prop.drone_civilian_generic',
+    'static.prop.drone_fictitious_cyberpolicevtol',
+    'static.prop.drone_civilian_bee',
+    'static.prop.drone_civilian_minimalistic',
+    'static.prop.drone_swan',
+    'static.prop.drone_civilian_phantom',
+    'static.prop.drone_civilian_parrot',
+    'static.prop.drone_fiveinch',
+    'static.prop.drone_450',
+    'static.prop.drone_x500'
+]
 
 def main():
     objects_list = []
@@ -174,6 +203,47 @@ def main():
 
         # Set FOV for all cameras
         fov_str = str(fov_degrees)
+
+        weather = carla.WeatherParameters(
+            cloudiness=0.0,
+            precipitation=0.0,
+            sun_altitude_angle=10.0,
+            sun_azimuth_angle = 70.0,
+            precipitation_deposits = 0.0,
+            wind_intensity = 0.0,
+            fog_density = 0.0,
+            wetness = 0.0, 
+        )
+        world.set_weather(weather)
+
+        spawn_points = world.get_map().get_spawn_points()
+
+        vehicle_bp = blueprint_library.find('vehicle.audi.etron')
+        ego_vehicle = world.try_spawn_actor(vehicle_bp, spawn_points[79])
+        objects_list.append(ego_vehicle)
+
+        for i in range(20):  
+            vehicle_bp = random.choice(blueprint_library.filter('vehicle')) 
+            spawn_point = random.choice(spawn_points)
+            npc = world.try_spawn_actor(vehicle_bp, spawn_point)
+            
+            print('rel cam location',spawn_point)
+
+            drone_blueprint =  blueprint_library.find(random.choice(drones_blueprint_array))
+            car_drone = world.spawn_actor(
+                drone_blueprint,
+                carla.Transform( carla.Location(x=0, y=0.0, z=random.uniform(5,50)) ),
+                attach_to=npc)    
+            
+            objects_list.append(car_drone)
+            
+            objects_list.append(npc)
+
+
+        for v in world.get_actors().filter('*vehicle*'): 
+            v.set_autopilot(True) 
+        ego_vehicle.set_autopilot(True) 
+
 
         sensor_type_names = [
             blueprint_library.find('sensor.camera.rgb'),
@@ -211,21 +281,36 @@ def main():
         # Draw a debug 3d grid for debugging
         draw_debug_grid(world)
 
+        vehicle_camera_eagle_position = carla.Transform( carla.Location(x=25, y=0.0, z=50), carla.Rotation(pitch=-90))
+        vehicle_camera_ego_position = carla.Transform( carla.Location(x=1, y=0.0, z=2), carla.Rotation(pitch=0))
+        vehicle_camera_eagle_far_position = carla.Transform( carla.Location(x=50, y=0.0, z=100), carla.Rotation(pitch=-90))
+
         #
         ### Sensor spawning
         #
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_ego_position, 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_eagle_position, 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_eagle_far_position, 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
 
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_ego_position,  'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_eagle_position, 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_eagle_far_position, 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
 
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_ego_position,  'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_eagle_position, 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
+        spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_eagle_far_position, 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
         
+        ## the spawn has to be done to an already existing object
+
+        def rgb_image_creator(image,date_time):
+            #cv2.imwrite(f'rgb_{date_time}.jpg',image)
+            pygame.image.save(image, f'rgb_{date_time}.png')
+            
+        def depth_image_creator(image,date_time):
+            #cv2.imwrite(f'depth_{date_time}.jpg',image)
+            pygame.image.save(image, f'depth{date_time}.png')
+
+
         pygame.init() 
 
         size = (1920, 1080)
@@ -275,7 +360,10 @@ def main():
     finally:
         print('destroying actors')
         for camera in objects_list:
-            camera.destroy()        
+            try:
+                camera.destroy()  
+            except Exception as e:
+                print("Destroing errorrr")      
         print('done.')
 
 
