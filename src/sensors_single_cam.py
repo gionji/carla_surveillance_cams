@@ -132,6 +132,8 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     
     # Draw annotation
     draw_debug_annotations(world, transform)
+            # Draw FOV borders for the camera
+    draw_fov_borders(transform, 90, 90, 20, world)
     
     # Set up camera blueprint
     camera_bp = blueprint_library.find(sensor_type)
@@ -146,6 +148,46 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     
     # Attach listener to the camera
     camera.listen(lambda image: callback(image, sensor_data, name))
+
+
+
+def draw_fov_borders(camera_transform, fov_horizontal, fov_vertical, distance, world):
+    # Convert FOV angles to radians
+    fov_horizontal_radians = np.deg2rad(fov_horizontal)
+    fov_vertical_radians = np.deg2rad(fov_vertical)
+
+    # Calculate half horizontal and vertical FOV angles
+    half_fov_horizontal_radians = fov_horizontal_radians / 2.0
+    half_fov_vertical_radians = fov_vertical_radians / 2.0
+
+    # Calculate direction vectors for horizontal and vertical FOV borders
+    horizontal_vector_left = carla.Vector3D(x=distance * np.cos(camera_transform.rotation.yaw + half_fov_horizontal_radians),
+                                             y=distance * np.sin(camera_transform.rotation.yaw + half_fov_horizontal_radians),
+                                             z=distance * np.sin(camera_transform.rotation.pitch + half_fov_vertical_radians))
+    horizontal_vector_right = carla.Vector3D(x=distance * np.cos(camera_transform.rotation.yaw - half_fov_horizontal_radians),
+                                              y=distance * np.sin(camera_transform.rotation.yaw - half_fov_horizontal_radians),
+                                              z=distance * np.sin(camera_transform.rotation.pitch + half_fov_vertical_radians))
+    vertical_vector_top = carla.Vector3D(x=distance * np.cos(camera_transform.rotation.yaw),
+                                         y=distance * np.sin(camera_transform.rotation.yaw),
+                                         z=distance * np.sin(camera_transform.rotation.pitch + half_fov_vertical_radians))
+    vertical_vector_bottom = carla.Vector3D(x=distance * np.cos(camera_transform.rotation.yaw),
+                                            y=distance * np.sin(camera_transform.rotation.yaw),
+                                            z=distance * np.sin(camera_transform.rotation.pitch - half_fov_vertical_radians))
+
+    # Get camera location
+    camera_location = camera_transform.location
+
+    # Calculate endpoints of horizontal and vertical FOV borders
+    horizontal_left_endpoint = camera_location + horizontal_vector_left
+    horizontal_right_endpoint = camera_location + horizontal_vector_right
+    vertical_top_endpoint = camera_location + vertical_vector_top
+    vertical_bottom_endpoint = camera_location + vertical_vector_bottom
+
+    # Draw debug lines for horizontal and vertical FOV borders
+    world.debug.draw_line(camera_location, horizontal_left_endpoint, thickness=0.05, color=carla.Color(255, 0, 0), life_time=10.0)
+    world.debug.draw_line(camera_location, horizontal_right_endpoint, thickness=0.05, color=carla.Color(255, 0, 0), life_time=10.0)
+    world.debug.draw_line(camera_location, vertical_top_endpoint, thickness=0.05, color=carla.Color(255, 0, 0), life_time=10.0)
+    world.debug.draw_line(camera_location, vertical_bottom_endpoint, thickness=0.05, color=carla.Color(255, 0, 0), life_time=10.0)
 
 
 
@@ -226,6 +268,9 @@ def main():
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
         
+
+
+
         pygame.init() 
 
         size = (1920, 1080)

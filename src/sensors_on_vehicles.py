@@ -216,12 +216,15 @@ def main():
         )
         world.set_weather(weather)
 
+
         spawn_points = world.get_map().get_spawn_points()
 
+        # spawn ego
         vehicle_bp = blueprint_library.find('vehicle.audi.etron')
         ego_vehicle = world.try_spawn_actor(vehicle_bp, spawn_points[79])
         objects_list.append(ego_vehicle)
 
+        # spawn random vehicles
         for i in range(20):  
             vehicle_bp = random.choice(blueprint_library.filter('vehicle')) 
             spawn_point = random.choice(spawn_points)
@@ -244,7 +247,7 @@ def main():
             v.set_autopilot(True) 
         ego_vehicle.set_autopilot(True) 
 
-
+        '''
         sensor_type_names = [
             blueprint_library.find('sensor.camera.rgb'),
             blueprint_library.find('sensor.camera.depth'),
@@ -256,6 +259,7 @@ def main():
             carla.Transform( carla.Location(x=-20, y=20,  z=20.4), carla.Rotation(yaw=0.0,   pitch=0.0, roll=0.0))  ,
             carla.Transform( carla.Location(x=0,   y=20,  z=20.4), carla.Rotation(yaw=-45.0, pitch=0.0, roll=0.0))  
         ]
+        '''
 
         # Update the sensor_data dictionary to include the different cameras sensors
         sensor_data = {'rgb_image_01': np.zeros((height, width, 4)),
@@ -281,13 +285,14 @@ def main():
         # Draw a debug 3d grid for debugging
         draw_debug_grid(world)
 
-        vehicle_camera_eagle_position = carla.Transform( carla.Location(x=25, y=0.0, z=50), carla.Rotation(pitch=-90))
-        vehicle_camera_ego_position = carla.Transform( carla.Location(x=1, y=0.0, z=2), carla.Rotation(pitch=0))
-        vehicle_camera_eagle_far_position = carla.Transform( carla.Location(x=50, y=0.0, z=100), carla.Rotation(pitch=-90))
 
         #
         ### Sensor spawning
         #
+        vehicle_camera_eagle_position = carla.Transform( carla.Location(x=25, y=0.0, z=50), carla.Rotation(pitch=-90))
+        vehicle_camera_ego_position = carla.Transform( carla.Location(x=1, y=0.0, z=2), carla.Rotation(pitch=0))
+        vehicle_camera_eagle_far_position = carla.Transform( carla.Location(x=50, y=0.0, z=100), carla.Rotation(pitch=-90))
+
         spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_ego_position, 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
         spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_eagle_position, 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
         spawn_camera_to_existing_object(world, blueprint_library, ego_vehicle, vehicle_camera_eagle_far_position, 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
