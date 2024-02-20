@@ -34,6 +34,8 @@ import time
 import numpy as np
 import cv2
 
+from flask import Flask, Response
+
 try:
     import pygame
     from pygame.locals import K_ESCAPE
@@ -279,7 +281,28 @@ def main():
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
         
+        
+        # Initialize Flask app
+        app = Flask(__name__)
 
+        @app.route('/video_feed/<sensor_key>')
+        def video_feed(sensor_key):
+            def generate():
+                if sensor_key in sensor_data:
+                    # Convert the image data to bytes
+                    ret, buffer = cv2.imencode('.jpg', sensor_data[sensor_key])
+                    image_data = buffer.tobytes()
+                    # Yield the image data as a stream
+                    yield (b'--frame\r\n'
+                        b'Content-Type: image/jpeg\r\n\r\n' + image_data + b'\r\n')
+                else:
+                    yield b'Sensor key not found'
+
+            return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+        # Start Flask app in a separate thread
+        import threading
+        threading.Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 5000}).start()
 
 
         pygame.init() 
