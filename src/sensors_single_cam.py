@@ -18,6 +18,9 @@ import datetime
 import glob
 import os
 import sys
+import json
+from src import mqtt, rest
+from hemligt import *
 
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
@@ -74,28 +77,66 @@ def draw_debug_grid(world, grid_size=2, distance=20, lifetime=30):
 
 
 def generate_camera_grid(sensor_data, grid_size, screen_size):
+
+    cols = len(sensor_data)
+    rows = len(sensor_data[0])
+    color = (0, 0, 255)
+
+    cell_width = screen_size[0]
+    cell_height = screen_size[1] // rows
+
+    grid_stack = []
+    rgb_stack = []
+    for i, (name, image) in enumerate(sensor_data[0].items()):
+        resized_image = cv2.resize(image[:, :, :3], (cell_height, cell_width))
+        cv2.putText(resized_image, name, (0, 20), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    color, 2, cv2.LINE_AA, True)
+        rgb_stack.append(resized_image)
+    grid_stack.append(np.hstack(rgb_stack))
+
+    depth_stack = []
+    if cols > 1:
+        for i, (name, image) in enumerate(sensor_data[1].items()):
+            resized_image = cv2.resize(image[:, :, :3], (cell_height, cell_width))
+            cv2.putText(resized_image, name, (0, 20), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                        color, 2, cv2.LINE_AA, True)
+            depth_stack.append(resized_image)
+        grid_stack.append(np.hstack(depth_stack))
+
+    segment_stack = []
+    if cols > 2:
+        for i, (name, image) in enumerate(sensor_data[2].items()):
+            resized_image = cv2.resize(image[:, :, :3], (cell_height, cell_width))
+            cv2.putText(resized_image, name, (0,20), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                        color, 2, cv2.LINE_AA, True)
+            segment_stack.append(resized_image)
+        grid_stack.append(np.hstack(segment_stack))
+
     # Calculate the dimensions of each grid cell
     cell_width = screen_size[1] // grid_size[0]
     cell_height = screen_size[0] // grid_size[1]
 
     # Create a blank canvas to hold the grid view
-    grid_view = np.zeros((screen_size[0], screen_size[1], 3), dtype=np.uint8)
+    #grid_view = np.zeros((screen_size[0], screen_size[1], 3), dtype=np.uint8)
+    grid_view = np.vstack(grid_stack)
 
     # Iterate over each camera image in the sensor_data dictionary
-    for i, (name, image) in enumerate(sensor_data.items()):
-        # Calculate the row and column indices for this camera image in the grid
-        row = i // grid_size[0]
-        col = i % grid_size[0]
+    #rgb_stack_image
 
-        # Convert RGBA image to RGB and resize it to fit in the grid cell
-        resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
-
-        # Calculate the coordinates to place the resized image in the grid
-        start_x = col * cell_width
-        start_y = row * cell_height
-
-        # Insert the resized image into the grid view canvas
-        grid_view[start_y:start_y + cell_height, start_x:start_x + cell_width] = resized_image
+    # for i, (name, image) in enumerate(sensor_data.items()):
+    #     # Calculate the row and column indices for this camera image in the grid
+    #     row = i // grid_size[0]
+    #     col = i % grid_size[0]
+    #
+    #     # Convert RGBA image to RGB and resize it to fit in the grid cell
+    #     resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
+    #
+    #     # Calculate the coordinates to place the resized image in the grid
+    #     start_x = col * cell_width
+    #     start_y = row * cell_height
+    #
+    #     # Insert the resized image into the grid view canvas
+    #     grid_view[start_y:start_y + cell_height, start_x:start_x + cell_width] = resized_image
 
     return grid_view
 
@@ -190,8 +231,57 @@ def draw_fov_borders(camera_transform, fov_horizontal, fov_vertical, distance, w
     world.debug.draw_line(camera_location, vertical_bottom_endpoint, thickness=0.05, color=carla.Color(255, 0, 0), life_time=10.0)
 
 
+def center_crop(image, w, h):
+    center = image.shape
+    x = center[1] / 2 - w / 2
+    y = center[0] / 2 - h / 2
 
-def main():
+    crop_img = image[int(y):int(y + h), int(x):int(x + w)]
+    return crop_img
+def generate_cropouts(rgb_data, w, h):
+    ret = {}
+    for i, (name, image) in enumerate(rgb_data.items()):
+        cropped = center_crop(image, w, h)
+        ret[name] = cropped
+
+    return ret
+
+
+def stream_sensor_video(rgb_data):
+    pass
+
+
+def publish_capture(name, date_time):
+    capture_struct = {
+        "name": name,
+        "time": date_time
+    }
+
+    #mqtt.publish_capture_result(client, capture_struct, name)
+    print("Published detection result.")
+
+
+def upload_crop(image, name, date_time, id):
+    #send to REST API here
+    response = rest.upload_img(image, name, date_time, id)
+
+
+
+
+def signal_img_captured(mq, date_time, rgb_crops, id):
+
+
+    for i, (name, image) in enumerate(rgb_crops.items()):
+        print(f'Captured object at time {date_time} from sensor: {name} of size {image.shape}')
+        # publish mqtt command
+        mq.publish_capture_result(name, date_time, id)
+        upload_crop(image, name, date_time, id)
+
+    # send image to REST interface
+    pass
+
+
+def main(mq):
     objects_list = []
 
     try:
@@ -229,17 +319,16 @@ def main():
             carla.Transform( carla.Location(x=0,   y=20,  z=20.4), carla.Rotation(yaw=-45.0, pitch=0.0, roll=0.0))  
         ]
 
+        depth = False
+        segment = False
+
         # Update the sensor_data dictionary to include the different cameras sensors
-        sensor_data = {'rgb_image_01': np.zeros((height, width, 4)),
-                       'rgb_image_02': np.zeros((height, width, 4)),
-                       'rgb_image_03': np.zeros((height, width, 4)),
-                       'depth_image_01': np.zeros((height, width, 4)),
-                       'depth_image_02': np.zeros((height, width, 4)),
-                       'depth_image_03': np.zeros((height, width, 4)),
-                       'inst_image_01': np.zeros((height, width, 4)),
-                       'inst_image_02': np.zeros((height, width, 4)),
-                       'inst_image_03': np.zeros((height, width, 4))
-        }
+        rgb_data = {f'rgb_image_{i+1:02}': np.zeros((height, width, 4)) for i in range(len(sensor_transforms))}
+        if depth:
+            depth_data = {f'depth_image_{i+1:02}': np.zeros((height, width, 4)) for i in range(len(sensor_transforms))}
+        if segment:
+            inst_data = {f'inst_image_{i+1:02}': np.zeros((height, width, 4)) for i in range(len(sensor_transforms))}
+
 
 
         # Move the spectator close to the spawned vehicle
@@ -256,55 +345,80 @@ def main():
         #
         ### Sensor spawning
         #
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
-
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
-
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
-        
 
 
+        for i, transf in enumerate(sensor_transforms):
+            spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.rgb', fov_str, rgb_data, objects_list, rgb_callback, f'rgb_image_{i+1:02}')
+            if depth:
+                spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.depth', fov_str, depth_data, objects_list, depth_callback, f'depth_image_{i+1:02}')
+            if segment:
+                spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.instance_segmentation', fov_str, inst_data, objects_list, inst_callback, f'inst_image_{i+1:02}')
 
         pygame.init() 
 
-        size = (1920, 1080)
-        pygame.display.set_caption("CARLA survailance system")
+        size = (640, 1080) #(1920, 1080)
+        pygame.display.set_caption("VISER Sim")
         screen = pygame.display.set_mode(size)
+        image_id = 0
 
         #control = carla.VehicleControl()
         clock = pygame.time.Clock()
         done = False
-
+        showDebug = True
+        showCameras = True
 
         while not done:
-            keys = pygame.key.get_pressed() 
-            
+            events = pygame.event.get()
+            for event in events:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_q:
+                        showCameras = not showCameras
+                    if event.key == pygame.K_w:
+                        showDebug = not showDebug
             # Made the keyboard control into a function
             #keyboard_control(keys)
             
             current_time = datetime.datetime.now()
-            date_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
-            
+            date_time = current_time.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+
             # Let's now save the images as well
             #rgb_image_creator(sensor_data['rgb_image'],datetime)
             #depth_image_creator(sensor_data['depth_image'],datetime)
 
+            rgb_crops = generate_cropouts(rgb_data, w=400, h=400)
+
+            stream_sensor_video(rgb_data)
+
+            if mq.activeCameras:
+                image_id += 1
+                signal_img_captured(mq, date_time, rgb_crops, image_id)
+
+
             # tick the simulation
             world.tick()
 
-            # Generate camera grid view
-            grid_view = generate_camera_grid(sensor_data, (3, 3), size)  # Pass screen size
 
-            # Update the display and check for the quit event
-            pygame.display.flip()
-            pygame.display.update()
-            screen.blit(pygame.surfarray.make_surface(grid_view), (0, 0)) # To display with Pygame
+
+            if showCameras:
+                # Generate camera grid view
+                num_sensor_types = 1
+                sensor_data = [rgb_data]
+                if depth:
+                    num_sensor_types +=1
+                    sensor_data.append(depth_data)
+                if segment:
+                    num_sensor_types += 1
+                    sensor_data.append(inst_data)
+
+                grid_view = generate_camera_grid(sensor_data, (len(sensor_transforms), num_sensor_types), size)  # Pass screen size
+
+                # Update the display and check for the quit event
+                #size = (grid_view.shape[0], grid_view.shape[1])
+                #screen = pygame.display.set_mode(size)
+                pygame.display.flip()
+                pygame.display.update()
+                screen.blit(pygame.surfarray.make_surface(grid_view), (0, 0)) # To display with Pygame
 
             # Better to use OpenCV to display both RGB and Depth Image
 
@@ -324,8 +438,23 @@ def main():
         print('done.')
 
 
+
+def setup_mqtt():
+    mq = mqtt.MqttInterface(broker_address='localhost', port=1883, username=C_USER, password=C_PASS)
+
+
+    global runFlag
+    runFlag = False
+    if mq.connect():
+        if mq.startLoop():
+            print("MQTT connection established.")
+
+    return mq
+
+
 if __name__ == '__main__':
-    main()
+    mq = setup_mqtt()
+    main(mq)
 
 
 

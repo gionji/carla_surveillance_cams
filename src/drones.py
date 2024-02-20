@@ -81,8 +81,8 @@ def main():
         bp = blueprint_library.find( drone_name )
 
         # Define the starting and ending transforms
-        start_transform = carla.Transform(carla.Location(x=20, y=40, z=15), carla.Rotation(pitch=0, yaw=0, roll=0))
-        end_transform = carla.Transform(carla.Location(x=40, y=-25, z=40), carla.Rotation(pitch=0, yaw=0, roll=0))
+        start_transform = carla.Transform(carla.Location(x=-10, y=20, z=15), carla.Rotation(pitch=0, yaw=0, roll=0))
+        end_transform = carla.Transform(carla.Location(x=40, y=-25, z=10), carla.Rotation(pitch=0, yaw=0, roll=0))
 
         # Spawn the object at the starting transform
         vehicle = world.spawn_actor(bp, start_transform)
