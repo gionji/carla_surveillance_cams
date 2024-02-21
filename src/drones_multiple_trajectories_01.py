@@ -72,7 +72,7 @@ def linear_trajectory(start_transform, end_transform, step, n_steps):
 
     return new_location
 
-def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitude=100.0):
+def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitude=[0,0,100.0]):
     # Calculate the step size for each component
     step_size = [(end_transform.location.x - start_transform.location.x) / n_steps,
                  (end_transform.location.y - start_transform.location.y) / n_steps,
@@ -80,9 +80,9 @@ def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitu
 
     # Calculate the new location using a sinusoidal trajectory with adjustable amplitude
     new_location = carla.Location(
-        x=start_transform.location.x + step * step_size[0],
-        y=start_transform.location.y + step * step_size[1],
-        z=start_transform.location.z + step_size[2] * amplitude * math.sin(step / n_steps * 2 * math.pi)
+        x=start_transform.location.x + step_size[0] * amplitude[0] * math.sin(step / n_steps * 2 * math.pi),
+        y=start_transform.location.y + step_size[1] * amplitude[1] * math.sin(step / n_steps * 2 * math.pi),
+        z=start_transform.location.z + step_size[2] * amplitude[2] * math.sin(step / n_steps * 2 * math.pi)
     )
 
     return new_location
