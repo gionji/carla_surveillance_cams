@@ -87,8 +87,12 @@ def generate_camera_grid(sensor_data, grid_size, screen_size):
         row = i // grid_size[0]
         col = i % grid_size[0]
 
-        # Convert RGBA image to RGB and resize it to fit in the grid cell
-        resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
+        # Convert RGBA image to RGB
+        if image.shape[2] == 4:
+            image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+
+        # Resize the image to fit in the grid cell
+        resized_image = cv2.resize(image, (cell_width, cell_height))
 
         # Calculate the coordinates to place the resized image in the grid
         start_x = col * cell_width
@@ -98,6 +102,7 @@ def generate_camera_grid(sensor_data, grid_size, screen_size):
         grid_view[start_y:start_y + cell_height, start_x:start_x + cell_width] = resized_image
 
     return grid_view
+
 
 
 def rgb_callback(image, data_dict, camera_name):
@@ -123,6 +128,48 @@ def inst_callback(image, data_dict, camera_name):
     data_dict[camera_name] = img
 
 
+import struct
+##
+# CARLA: doc page: https://carla.readthedocs.io/en/latest/ref_sensors/#optical-flow-camera
+# raw_data 	bytes 	Array of BGRA 64-bit pixels containing two float values.
+#
+def optiflow_callback(optical_flow_image, data_dict, camera_name):
+    # Get the raw data from the OpticalFlowImage object
+    raw_data = optical_flow_image.raw_data
+
+    # Assuming each float value is 32 bits (4 bytes) and BGRA order
+    pixel_size = 8  # 64 bits (8 bytes) for each pixel
+    num_pixels = len(raw_data) // pixel_size
+
+    # Interpret raw data as floats
+    float_data = struct.unpack(f"<{num_pixels * 2}f", raw_data)
+
+    # Reshape the float data into a 2D array with two channels
+    float_array = np.array(float_data).reshape((optical_flow_image.height, optical_flow_image.width, 2))
+
+    # Convert the optical flow vectors to colors using HSV color space
+    hsv = np.zeros((optical_flow_image.height, optical_flow_image.width, 3), dtype=np.uint8)
+    hsv[..., 1] = 255
+
+    # Calculate magnitude and angle of the optical flow vectors
+    mag, ang = cv2.cartToPolar(float_array[..., 0], float_array[..., 1])
+
+    # Set hue according to the angle of the optical flow vectors
+    hsv[..., 0] = ang * 180 / np.pi / 2
+
+    # Normalize magnitude for visualization
+    hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+
+    # Convert HSV to RGB
+    rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+    # Convert from RGBA to RGB
+    rgb_flow = np.rot90(rgb_flow, -1)  # Rotate the image 90 degrees clockwise
+    rgb_flow = np.fliplr(rgb_flow)
+
+    data_dict[camera_name] = rgb_flow
+
+
 def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor_type, fov_str, sensor_data, objects_list, callback, name):
     # Spawn anchor object
     anchor_object = world.spawn_actor(
@@ -134,6 +181,7 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     draw_debug_annotations(world, transform)
             # Draw FOV borders for the camera
     draw_fov_borders(transform, 90, 90, 20, world)
+
     
     # Set up camera blueprint
     camera_bp = blueprint_library.find(sensor_type)
@@ -267,7 +315,7 @@ def main():
         #
         ### Sensor spawning
         #
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
+        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'rgb_image_01')
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
 

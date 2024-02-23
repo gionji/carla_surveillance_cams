@@ -72,7 +72,7 @@ def linear_trajectory(start_transform, end_transform, step, n_steps):
 
     return new_location
 
-def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitude=[0,0,100.0]):
+def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitude=[20,20,20]):
     # Calculate the step size for each component
     step_size = [(end_transform.location.x - start_transform.location.x) / n_steps,
                  (end_transform.location.y - start_transform.location.y) / n_steps,
@@ -108,6 +108,8 @@ def circular_trajectory(start_transform, end_transform, step, n_steps):
     )
 
     return new_location
+
+
 
 class DroneThread(threading.Thread):
     def __init__(self, client, world, start_transform, end_transform, trajectory_function=linear_trajectory):
@@ -195,7 +197,7 @@ def main():
             selected_trajectory_function = random.choice(trajectory_functions)
 
             # Create DroneThread object with client, world, start_transform, end_transform, and randomly selected trajectory function.
-            thread = DroneThread(client, world, start_transform, end_transform, trajectory_function=sinusoidal_trajectory)
+            thread = DroneThread(client, world, start_transform, end_transform, trajectory_function=selected_trajectory_function)
             thread.start()
             threads.append(thread)
 
@@ -205,8 +207,6 @@ def main():
 
     except KeyboardInterrupt:
         pass
-
-
 
 
 
