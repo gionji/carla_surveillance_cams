@@ -72,7 +72,7 @@ def linear_trajectory(start_transform, end_transform, step, n_steps):
 
     return new_location
 
-def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitude=[0,0,100.0]):
+def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitude=[10, 10, 40.0]):
     # Calculate the step size for each component
     step_size = [(end_transform.location.x - start_transform.location.x) / n_steps,
                  (end_transform.location.y - start_transform.location.y) / n_steps,
@@ -141,10 +141,11 @@ class DroneThread(threading.Thread):
 
             # Calculate the step size for each component
             n_steps = 100
-            m_time = 10.0
+            m_time = 20.0
 
+            step = 0
             # Move the object to the ending transform in n steps using the specified trajectory function
-            for step in range(n_steps):
+            while step < n_steps:
                 new_location = self.trajectory_function(self.start_transform, self.end_transform, step, n_steps)
 
                 # Set the new transform
@@ -152,6 +153,10 @@ class DroneThread(threading.Thread):
 
                 # Wait for m_time / n_steps seconds
                 time.sleep(m_time / n_steps)
+                step += 1
+                if step >= n_steps:
+                    step = 0
+
 
         finally:
             print('destroying actors')
@@ -171,11 +176,11 @@ def main():
         world = client.get_world()
 
         # Define the minimum and maximum values for the cubic area.
-        min_values = carla.Location(x=-50, y=-50, z=0)
-        max_values = carla.Location(x=50, y=50, z=50)
+        min_values = carla.Location(x=-16, y=2, z=5)
+        max_values = carla.Location(x=20, y=25, z=40)
 
         # Create and start threads for flying drones
-        num_drones = 50  # Adjust the number of drones as needed
+        num_drones = 5  # Adjust the number of drones as needed
         threads = []
         for _ in range(num_drones):
             # Generate random starting and ending transforms within the cubic area.

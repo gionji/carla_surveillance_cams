@@ -90,7 +90,7 @@ def main():
 
         # Calculate the step size for each component
         n_steps = 100
-        m_time = 10.0
+        m_time = 20.0
         # Calculate the step size for each component
         step_size = [(end_transform.location.x - start_transform.location.x) / n_steps,
                     (end_transform.location.y - start_transform.location.y) / n_steps,
