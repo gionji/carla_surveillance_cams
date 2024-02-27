@@ -172,7 +172,7 @@ class MqttInterface:
             "id": id
         }
         self.client.publish(f'{MQTT_TOPIC_VISERCAM_PUBLISH}/cam_{name}', json.dumps(result))
-        print("Published capture result.")
+        #print("Published capture result.")
 
     def disconnect(self):
         print("quitting")
