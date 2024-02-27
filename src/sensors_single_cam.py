@@ -280,7 +280,7 @@ def random_crop_with_bbox(xmin, ymin, xmax, ymax, img_width, img_height, cropx, 
         raise ValueError("Crop size must be larger than bounding box size")
 
 
-    print(f'xmin = {xmin}, xmax={xmax}, ymin = {ymin}, ymax={ymax}')
+    #print(f'xmin = {xmin}, xmax={xmax}, ymin = {ymin}, ymax={ymax}')
 
     # Calculate the range within which the crop can start
     # to ensure the bounding box is within the cropped area
@@ -336,7 +336,7 @@ def extend_crop(xmin, ymin, xmax, ymax, img_width, img_height, crop_w, crop_h, x
     if y2 >= height:
         y1, y2 = height - crop_h - 1, height - 1
 
-    print(f'xmin = {x1}, xmax={x2}, ymin = {y1}, ymax={y2}')
+    #print(f'xmin = {x1}, xmax={x2}, ymin = {y1}, ymax={y2}')
 
     return np.array([[x1, y1], [x2, y2]])
     #return crop_info[2:]
@@ -403,13 +403,14 @@ def find_bounding_boxes(instance_map, classes, out_classes, threshold=100, occlu
                 occluded_pixel_ratio = float(num_pixels / box_area)
 
                 if  occluded_pixel_ratio > 1:
-                    print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id >> 8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}, RATIO: {occluded_pixel_ratio}")
+                    pass
+                    #print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id >> 8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}, RATIO: {occluded_pixel_ratio}")
 
                 elif occluded_pixel_ratio >= occlusion_ratio:
 
                     if True:#depth_diff > depth_diff_th:
                         #print(f"Depth: object = {distance_masked}, background = {distance_non_masked}")
-                        print(f"Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id >> 8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}, ratio: {occluded_pixel_ratio}")
+                        #print(f"Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id >> 8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}, ratio: {occluded_pixel_ratio}")
                         class_id_remapped = out_classes[class_name]
                         bounding_boxes.append(np.array([[xmin, ymin], [xmax, ymax]]))
                         cropouts.append(extend_crop(xmin, ymin, xmax, ymax, img_width, img_height, crop_w, crop_h, xdev=50, ydev=50))
@@ -417,9 +418,11 @@ def find_bounding_boxes(instance_map, classes, out_classes, threshold=100, occlu
                     #else:
                     #    print(f"DROPPED Class: {class_id} ({class_name}) due to depth: object = {distance_masked}, background = {distance_non_masked}")
                 else:
-                    print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id >> 8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}, ratio: {occluded_pixel_ratio}")
+                    pass
+                    #print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id >> 8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}, ratio: {occluded_pixel_ratio}")
             else:
-                print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id>>8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}")
+                pass
+                #print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id>>8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}")
 
 
 
@@ -497,11 +500,17 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
         # to the simulator. Here we'll assume the simulator is accepting
         # requests in the localhost at port 2000.
         client = carla.Client('localhost', 2000)
-        client.set_timeout(2.0)
+        client.set_timeout(5.0)
 
         # Once we have a client we can retrieve the world that is currently
         # running.
+        map_index = 3
+        available_maps = ["Town01", "Town02", "Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
         world = client.get_world()
+
+        map_name = available_maps[map_index]
+        print(f"Loading map {map_index}: {map_name}")
+        client.load_world(map_name)
 
         # The world contains the list blueprints that we can use for adding new
         # actors into the simulation.
@@ -554,17 +563,19 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
 
         pygame.init()
 
+        done = False
+        showDebug = True
+        showCameras = False
 
         size = (640, 1080) #(1920, 1080)
-        pygame.display.set_caption("VISER Sim")
-        screen = pygame.display.set_mode(size)
+        if showCameras:
+            pygame.display.set_caption("VISER Sim")
+            screen = pygame.display.set_mode(size)
         image_id = 0
 
         #control = carla.VehicleControl()
         clock = pygame.time.Clock()
-        done = False
-        showDebug = True
-        showCameras = True
+
 
         while not done:
             events = pygame.event.get()
