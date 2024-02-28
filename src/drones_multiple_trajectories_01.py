@@ -154,7 +154,8 @@ class DroneThread(threading.Thread):
 
                 # Wait for m_time / n_steps seconds
                 time.sleep(m_time / n_steps)
-
+        except Exception as e:
+            print(e)
         finally:
             print('destroying actors')
             for obj in objects_list:
@@ -177,7 +178,7 @@ def main():
         max_values = carla.Location(x=50, y=50, z=50)
 
         # Create and start threads for flying drones
-        num_drones = 50  # Adjust the number of drones as needed
+        num_drones = 5  # Adjust the number of drones as needed
         threads = []
         for _ in range(num_drones):
             # Generate random starting and ending transforms within the cubic area.
