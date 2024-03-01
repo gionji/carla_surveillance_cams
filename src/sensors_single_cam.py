@@ -19,8 +19,8 @@ import glob
 import os
 import sys
 import json
-from src import mqtt, rest, objects
-from hemligt import *
+import mqtt, rest, objects
+#from hemligt import *
 
 from flask import Flask, Response
 
@@ -651,6 +651,12 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
             camera.destroy()        
         print('done.')
 
+
+
+
+# Define MQTT broker username and password
+C_USER = os.environ.get("C_USER", "default_username")
+C_PASS = os.environ.get("C_PASS", "default_password")
 
 
 def setup_mqtt():

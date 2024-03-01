@@ -5,7 +5,6 @@ import json
 import time, sys
 import threading
 # import detect
-from hemligt import *
 
 debug = False
 rxMess = None

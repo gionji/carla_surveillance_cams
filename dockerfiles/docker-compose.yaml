@@ -1,0 +1,21 @@
+version: '3'
+
+services:
+  mqtt_broker:
+    image: mqtt_broker
+    environment:
+      C_USER: your_username
+      C_PASS: your_password
+    network_mode: "host"
+
+  sensors_single_cam:
+    image: sensors_single_cam
+    environment:
+      C_USER: your_username
+      C_PASS: your_password
+    network_mode: "host"
+
+  drones_multiple_trajectories_01:
+    image: drones_multiple_trajectories_01
+    network_mode: "host"
+
