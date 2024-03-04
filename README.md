@@ -52,17 +52,22 @@ Here's a breakdown of what the script does:
 ## Build containers
 
 docker build -t mqtt_broker -f dockerfiles/mqtt_broker/Dockerfile .
+
 docker build -t sensors_single_cam -f dockerfiles/sensors_single_cam/Dockerfile .
+
 docker run --rm drones_multiple_trajectories_01
 
 ## Run containers
 
 docker run -ti --rm mqtt_broker
+
 docker run -ti --rm -e C_USER=your_username -e C_PASS=your_password sensors_single_cam
+
 docker run --rm drones_multiple_trajectories_01
 
 ## Docker compose
 cd ./dockerfiles
+
 docker-compose up
 
 
