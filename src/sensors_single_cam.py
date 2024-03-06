@@ -33,6 +33,7 @@ import random
 import time
 import numpy as np
 import cv2
+import struct
 
 try:
     import pygame
@@ -128,7 +129,7 @@ def inst_callback(image, data_dict, camera_name):
     data_dict[camera_name] = img
 
 
-import struct
+
 ##
 # CARLA: doc page: https://carla.readthedocs.io/en/latest/ref_sensors/#optical-flow-camera
 # raw_data 	bytes 	Array of BGRA 64-bit pixels containing two float values.
@@ -196,6 +197,8 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     
     # Attach listener to the camera
     camera.listen(lambda image: callback(image, sensor_data, name))
+
+    return anchor_object
 
 
 
@@ -315,21 +318,19 @@ def main():
         #
         ### Sensor spawning
         #
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'rgb_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
+        #rgb_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'rgb_image_01')
+        rgb_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
+        rgb_2 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
+        rgb_3 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
 
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
+        depth_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
+        depth_2 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
+        depth_3 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
 
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
-        
-
-
-
+        seg_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
+        seg_2 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
+        seg_3 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
+     
         pygame.init() 
 
         size = (1920, 1080)
@@ -370,6 +371,27 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_t:
+                        spectator_transform = spectator.get_transform()
+                    elif event.key == pygame.K_1:
+                        spectator_transform = spectator.get_transform()
+                        rgb_1.set_transform(spectator_transform)
+                        depth_1.set_transform(spectator_transform)
+                        seg_1.set_transform(spectator_transform)
+                        print( 'Move camera 1', spectator_transform )
+                    elif event.key == pygame.K_2:
+                        spectator_transform = spectator.get_transform()
+                        rgb_2.set_transform(spectator_transform)
+                        depth_2.set_transform(spectator_transform)
+                        seg_2.set_transform(spectator_transform)
+                        print( 'Move camera 2', spectator_transform )
+                    elif event.key == pygame.K_3:
+                        spectator_transform = spectator.get_transform()
+                        rgb_3.set_transform(spectator_transform)
+                        depth_3.set_transform(spectator_transform)
+                        seg_3.set_transform(spectator_transform)
+                        print( 'Move camera 3', spectator_transform )
 
             # Sleep to ensure consistent loop timing
             clock.tick(60)
