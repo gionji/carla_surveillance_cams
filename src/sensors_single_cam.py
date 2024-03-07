@@ -253,6 +253,36 @@ def draw_fov_borders(camera_transform, fov_horizontal, fov_vertical, distance, w
 
 
 
+def randomize_weather(world):
+    """
+    Randomize the weather in the Carla world.
+    """
+    # Define the range of values for each weather parameter
+    cloudiness = random.choice([0.0, 25.0, 100.0])
+    precipitation = random.uniform(0.0, 100.0)
+    sun_altitude_angle = random.uniform(-50.0, 90.0)
+    sun_azimuth_angle = random.uniform(0.0, 360.0)
+    precipitation_deposits = random.uniform(0.0, 100.0)
+    wind_intensity = random.uniform(0.0, 100.0)
+    fog_density = random.uniform(0.0, 10.0)
+    wetness = random.uniform(0.0, 100.0)
+
+    # Create a WeatherParameters object with the randomized values
+    weather = carla.WeatherParameters(
+        cloudiness=cloudiness,
+        precipitation=precipitation,
+        sun_altitude_angle=sun_altitude_angle,
+        sun_azimuth_angle=sun_azimuth_angle,
+        precipitation_deposits=precipitation_deposits,
+        wind_intensity=wind_intensity,
+        fog_density=fog_density,
+        wetness=wetness
+    )
+
+    # Set the randomized weather in the Carla world
+    world.set_weather(weather)
+
+
 def main():
     objects_list = []
 
@@ -319,17 +349,17 @@ def main():
         ### Sensor spawning
         #
         #rgb_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'rgb_image_01')
-        rgb_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
-        rgb_2 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
-        rgb_3 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
+        rgb_1_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
+        rgb_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
+        rgb_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
 
-        depth_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
-        depth_2 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
-        depth_3 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
+        depth_1_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
+        depth_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
+        depth_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
 
-        seg_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
-        seg_2 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
-        seg_3 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
+        seg_1_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
+        seg_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
+        seg_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
      
         pygame.init() 
 
@@ -376,22 +406,25 @@ def main():
                         spectator_transform = spectator.get_transform()
                     elif event.key == pygame.K_1:
                         spectator_transform = spectator.get_transform()
-                        rgb_1.set_transform(spectator_transform)
-                        depth_1.set_transform(spectator_transform)
-                        seg_1.set_transform(spectator_transform)
+                        rgb_1_ref_obj.set_transform(spectator_transform)
+                        depth_1_ref_obj.set_transform(spectator_transform)
+                        seg_1_ref_obj.set_transform(spectator_transform)
                         print( 'Move camera 1', spectator_transform )
                     elif event.key == pygame.K_2:
                         spectator_transform = spectator.get_transform()
-                        rgb_2.set_transform(spectator_transform)
-                        depth_2.set_transform(spectator_transform)
-                        seg_2.set_transform(spectator_transform)
+                        rgb_2_ref_obj.set_transform(spectator_transform)
+                        depth_2_ref_obj.set_transform(spectator_transform)
+                        seg_2_ref_obj.set_transform(spectator_transform)
                         print( 'Move camera 2', spectator_transform )
                     elif event.key == pygame.K_3:
                         spectator_transform = spectator.get_transform()
-                        rgb_3.set_transform(spectator_transform)
-                        depth_3.set_transform(spectator_transform)
-                        seg_3.set_transform(spectator_transform)
-                        print( 'Move camera 3', spectator_transform )
+                        rgb_3_ref_obj.set_transform(spectator_transform)
+                        depth_3_ref_obj.set_transform(spectator_transform)
+                        seg_3_ref_obj.set_transform(spectator_transform)
+                        print( 'Move camera 3', spectator_transform )                    
+                    elif event.key == pygame.K_w:
+                        randomize_weather(world)                
+                        print( 'Randomize weather' )
 
             # Sleep to ensure consistent loop timing
             clock.tick(60)
