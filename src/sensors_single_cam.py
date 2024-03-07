@@ -330,7 +330,10 @@ def main():
                        'depth_image_03': np.zeros((height, width, 4)),
                        'inst_image_01': np.zeros((height, width, 4)),
                        'inst_image_02': np.zeros((height, width, 4)),
-                       'inst_image_03': np.zeros((height, width, 4))
+                       'inst_image_03': np.zeros((height, width, 4)),
+                       'opt_image_01': np.zeros((height, width, 4)),
+                       'opt_image_02': np.zeros((height, width, 4)),
+                       'opt_image_03': np.zeros((height, width, 4))
         }
 
 
@@ -361,6 +364,10 @@ def main():
         seg_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
         seg_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
      
+        opt_1_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'opt_image_01')
+        opt_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'opt_image_02')
+        opt_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'opt_image_03')
+
         pygame.init() 
 
         size = (1920, 1080)
@@ -389,7 +396,7 @@ def main():
             world.tick()
 
             # Generate camera grid view
-            grid_view = generate_camera_grid(sensor_data, (3, 3), size)  # Pass screen size
+            grid_view = generate_camera_grid(sensor_data, (3, 4), size)  # Pass screen size
 
             # Update the display and check for the quit event
             pygame.display.flip()
@@ -409,18 +416,21 @@ def main():
                         rgb_1_ref_obj.set_transform(spectator_transform)
                         depth_1_ref_obj.set_transform(spectator_transform)
                         seg_1_ref_obj.set_transform(spectator_transform)
+                        opt_1_ref_obj.set_transform(spectator_transform)
                         print( 'Move camera 1', spectator_transform )
                     elif event.key == pygame.K_2:
                         spectator_transform = spectator.get_transform()
                         rgb_2_ref_obj.set_transform(spectator_transform)
                         depth_2_ref_obj.set_transform(spectator_transform)
                         seg_2_ref_obj.set_transform(spectator_transform)
+                        opt_2_ref_obj.set_transform(spectator_transform)
                         print( 'Move camera 2', spectator_transform )
                     elif event.key == pygame.K_3:
                         spectator_transform = spectator.get_transform()
                         rgb_3_ref_obj.set_transform(spectator_transform)
                         depth_3_ref_obj.set_transform(spectator_transform)
                         seg_3_ref_obj.set_transform(spectator_transform)
+                        opt_3_ref_obj.set_transform(spectator_transform)
                         print( 'Move camera 3', spectator_transform )                    
                     elif event.key == pygame.K_w:
                         randomize_weather(world)                
