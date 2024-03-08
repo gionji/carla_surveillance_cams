@@ -72,7 +72,7 @@ def linear_trajectory(start_transform, end_transform, step, n_steps):
 
     return new_location
 
-def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitude=[0,0,100.0]):
+def sinusoidal_trajectory(start_transform, end_transform, step, n_steps, amplitude=[20,20,20]):
     # Calculate the step size for each component
     step_size = [(end_transform.location.x - start_transform.location.x) / n_steps,
                  (end_transform.location.y - start_transform.location.y) / n_steps,
@@ -108,6 +108,8 @@ def circular_trajectory(start_transform, end_transform, step, n_steps):
     )
 
     return new_location
+
+
 
 class DroneThread(threading.Thread):
     def __init__(self, client, world, start_transform, end_transform, trajectory_function=linear_trajectory):
@@ -152,7 +154,8 @@ class DroneThread(threading.Thread):
 
                 # Wait for m_time / n_steps seconds
                 time.sleep(m_time / n_steps)
-
+        except Exception as e:
+            print(e)
         finally:
             print('destroying actors')
             for obj in objects_list:
@@ -175,7 +178,7 @@ def main():
         max_values = carla.Location(x=50, y=50, z=50)
 
         # Create and start threads for flying drones
-        num_drones = 50  # Adjust the number of drones as needed
+        num_drones = 5  # Adjust the number of drones as needed
         threads = []
         for _ in range(num_drones):
             # Generate random starting and ending transforms within the cubic area.
@@ -195,7 +198,7 @@ def main():
             selected_trajectory_function = random.choice(trajectory_functions)
 
             # Create DroneThread object with client, world, start_transform, end_transform, and randomly selected trajectory function.
-            thread = DroneThread(client, world, start_transform, end_transform, trajectory_function=sinusoidal_trajectory)
+            thread = DroneThread(client, world, start_transform, end_transform, trajectory_function=selected_trajectory_function)
             thread.start()
             threads.append(thread)
 
@@ -205,8 +208,6 @@ def main():
 
     except KeyboardInterrupt:
         pass
-
-
 
 
 

@@ -241,7 +241,14 @@ def main():
             carla.Transform( carla.Location(x=-20, y=20,  z=20.4), carla.Rotation(yaw=0.0,   pitch=0.0, roll=0.0))  ,
             carla.Transform( carla.Location(x=0,   y=20,  z=20.4), carla.Rotation(yaw=-45.0, pitch=0.0, roll=0.0))  
         ]
+hsv = np.zeros((optical_flow_data.shape[0], optical_flow_data.shape[1], 3), dtype=np.uint8)
+    hsv[..., 1] = 255
 
+    mag, ang = cv2.cartToPolar(optical_flow_data[..., 0], optical_flow_data[..., 1])
+    hsv[..., 0] = ang * 180 / np.pi / 2
+    hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+
+    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         # Update the sensor_data dictionary to include the different cameras sensors
         sensor_data = {'rgb_image_01': np.zeros((height, width, 4)),
                        'rgb_image_02': np.zeros((height, width, 4)),
@@ -255,7 +262,14 @@ def main():
         }
 
 
-        # Move the spectator close to the spawned vehicle
+        # Move the spectator close thsv = np.zeros((optical_flow_data.shape[0], optical_flow_data.shape[1], 3), dtype=np.uint8)
+    hsv[..., 1] = 255
+
+    mag, ang = cv2.cartToPolar(optical_flow_data[..., 0], optical_flow_data[..., 1])
+    hsv[..., 0] = ang * 180 / np.pi / 2
+    hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+
+    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)o the spawned vehicle
         spectator = world.get_spectator()
         #spectator.set_transform( carla.Transform(carla.Location(x=0, y=0.0, z=40), carla.Rotation(pitch=-90)) )
 
@@ -270,7 +284,14 @@ def main():
         ### Sensor spawning
         #
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
+        spawn_camera(world, blueprinhsv = np.zeros((optical_flow_data.shape[0], optical_flow_data.shape[1], 3), dtype=np.uint8)
+    hsv[..., 1] = 255
+
+    mag, ang = cv2.cartToPolar(optical_flow_data[..., 0], optical_flow_data[..., 1])
+    hsv[..., 0] = ang * 180 / np.pi / 2
+    hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+
+    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)t_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
 
         spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')

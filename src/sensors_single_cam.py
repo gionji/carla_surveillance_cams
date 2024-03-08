@@ -33,6 +33,7 @@ import random
 import time
 import numpy as np
 import cv2
+import struct
 
 try:
     import pygame
@@ -87,8 +88,12 @@ def generate_camera_grid(sensor_data, grid_size, screen_size):
         row = i // grid_size[0]
         col = i % grid_size[0]
 
-        # Convert RGBA image to RGB and resize it to fit in the grid cell
-        resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
+        # Convert RGBA image to RGB
+        if image.shape[2] == 4:
+            image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+
+        # Resize the image to fit in the grid cell
+        resized_image = cv2.resize(image, (cell_width, cell_height))
 
         # Calculate the coordinates to place the resized image in the grid
         start_x = col * cell_width
@@ -98,6 +103,7 @@ def generate_camera_grid(sensor_data, grid_size, screen_size):
         grid_view[start_y:start_y + cell_height, start_x:start_x + cell_width] = resized_image
 
     return grid_view
+
 
 
 def rgb_callback(image, data_dict, camera_name):
@@ -123,6 +129,48 @@ def inst_callback(image, data_dict, camera_name):
     data_dict[camera_name] = img
 
 
+
+##
+# CARLA: doc page: https://carla.readthedocs.io/en/latest/ref_sensors/#optical-flow-camera
+# raw_data 	bytes 	Array of BGRA 64-bit pixels containing two float values.
+#
+def optiflow_callback(optical_flow_image, data_dict, camera_name):
+    # Get the raw data from the OpticalFlowImage object
+    raw_data = optical_flow_image.raw_data
+
+    # Assuming each float value is 32 bits (4 bytes) and BGRA order
+    pixel_size = 8  # 64 bits (8 bytes) for each pixel
+    num_pixels = len(raw_data) // pixel_size
+
+    # Interpret raw data as floats
+    float_data = struct.unpack(f"<{num_pixels * 2}f", raw_data)
+
+    # Reshape the float data into a 2D array with two channels
+    float_array = np.array(float_data).reshape((optical_flow_image.height, optical_flow_image.width, 2))
+
+    # Convert the optical flow vectors to colors using HSV color space
+    hsv = np.zeros((optical_flow_image.height, optical_flow_image.width, 3), dtype=np.uint8)
+    hsv[..., 1] = 255
+
+    # Calculate magnitude and angle of the optical flow vectors
+    mag, ang = cv2.cartToPolar(float_array[..., 0], float_array[..., 1])
+
+    # Set hue according to the angle of the optical flow vectors
+    hsv[..., 0] = ang * 180 / np.pi / 2
+
+    # Normalize magnitude for visualization
+    hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+
+    # Convert HSV to RGB
+    rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+    # Convert from RGBA to RGB
+    rgb_flow = np.rot90(rgb_flow, -1)  # Rotate the image 90 degrees clockwise
+    rgb_flow = np.fliplr(rgb_flow)
+
+    data_dict[camera_name] = rgb_flow
+
+
 def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor_type, fov_str, sensor_data, objects_list, callback, name):
     # Spawn anchor object
     anchor_object = world.spawn_actor(
@@ -134,6 +182,7 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     draw_debug_annotations(world, transform)
             # Draw FOV borders for the camera
     draw_fov_borders(transform, 90, 90, 20, world)
+
     
     # Set up camera blueprint
     camera_bp = blueprint_library.find(sensor_type)
@@ -148,6 +197,8 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     
     # Attach listener to the camera
     camera.listen(lambda image: callback(image, sensor_data, name))
+
+    return anchor_object
 
 
 
@@ -202,6 +253,36 @@ def draw_fov_borders(camera_transform, fov_horizontal, fov_vertical, distance, w
 
 
 
+def randomize_weather(world):
+    """
+    Randomize the weather in the Carla world.
+    """
+    # Define the range of values for each weather parameter
+    cloudiness = random.choice([0.0, 25.0, 100.0])
+    precipitation = random.uniform(0.0, 100.0)
+    sun_altitude_angle = random.uniform(-50.0, 90.0)
+    sun_azimuth_angle = random.uniform(0.0, 360.0)
+    precipitation_deposits = random.uniform(0.0, 100.0)
+    wind_intensity = random.uniform(0.0, 100.0)
+    fog_density = random.uniform(0.0, 10.0)
+    wetness = random.uniform(0.0, 100.0)
+
+    # Create a WeatherParameters object with the randomized values
+    weather = carla.WeatherParameters(
+        cloudiness=cloudiness,
+        precipitation=precipitation,
+        sun_altitude_angle=sun_altitude_angle,
+        sun_azimuth_angle=sun_azimuth_angle,
+        precipitation_deposits=precipitation_deposits,
+        wind_intensity=wind_intensity,
+        fog_density=fog_density,
+        wetness=wetness
+    )
+
+    # Set the randomized weather in the Carla world
+    world.set_weather(weather)
+
+
 def main():
     objects_list = []
 
@@ -249,7 +330,10 @@ def main():
                        'depth_image_03': np.zeros((height, width, 4)),
                        'inst_image_01': np.zeros((height, width, 4)),
                        'inst_image_02': np.zeros((height, width, 4)),
-                       'inst_image_03': np.zeros((height, width, 4))
+                       'inst_image_03': np.zeros((height, width, 4)),
+                       'opt_image_01': np.zeros((height, width, 4)),
+                       'opt_image_02': np.zeros((height, width, 4)),
+                       'opt_image_03': np.zeros((height, width, 4))
         }
 
 
@@ -267,20 +351,22 @@ def main():
         #
         ### Sensor spawning
         #
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
+        #rgb_1 = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'rgb_image_01')
+        rgb_1_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_01')
+        rgb_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_02')
+        rgb_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.rgb', fov_str, sensor_data, objects_list, rgb_callback, 'rgb_image_03')
 
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
+        depth_1_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_01')
+        depth_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_02')
+        depth_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.depth', fov_str, sensor_data, objects_list, depth_callback, 'depth_image_03')
 
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
-        spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
-        
-
-
+        seg_1_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_01')
+        seg_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_02')
+        seg_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.instance_segmentation', fov_str, sensor_data, objects_list, inst_callback, 'inst_image_03')
+     
+        opt_1_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[0], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'opt_image_01')
+        opt_2_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[1], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'opt_image_02')
+        opt_3_ref_obj = spawn_camera(world, blueprint_library, rererence_actor_bp, sensor_transforms[2], 'sensor.camera.optical_flow', fov_str, sensor_data, objects_list, optiflow_callback, 'opt_image_03')
 
         pygame.init() 
 
@@ -310,7 +396,7 @@ def main():
             world.tick()
 
             # Generate camera grid view
-            grid_view = generate_camera_grid(sensor_data, (3, 3), size)  # Pass screen size
+            grid_view = generate_camera_grid(sensor_data, (3, 4), size)  # Pass screen size
 
             # Update the display and check for the quit event
             pygame.display.flip()
@@ -322,6 +408,33 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_t:
+                        spectator_transform = spectator.get_transform()
+                    elif event.key == pygame.K_1:
+                        spectator_transform = spectator.get_transform()
+                        rgb_1_ref_obj.set_transform(spectator_transform)
+                        depth_1_ref_obj.set_transform(spectator_transform)
+                        seg_1_ref_obj.set_transform(spectator_transform)
+                        opt_1_ref_obj.set_transform(spectator_transform)
+                        print( 'Move camera 1', spectator_transform )
+                    elif event.key == pygame.K_2:
+                        spectator_transform = spectator.get_transform()
+                        rgb_2_ref_obj.set_transform(spectator_transform)
+                        depth_2_ref_obj.set_transform(spectator_transform)
+                        seg_2_ref_obj.set_transform(spectator_transform)
+                        opt_2_ref_obj.set_transform(spectator_transform)
+                        print( 'Move camera 2', spectator_transform )
+                    elif event.key == pygame.K_3:
+                        spectator_transform = spectator.get_transform()
+                        rgb_3_ref_obj.set_transform(spectator_transform)
+                        depth_3_ref_obj.set_transform(spectator_transform)
+                        seg_3_ref_obj.set_transform(spectator_transform)
+                        opt_3_ref_obj.set_transform(spectator_transform)
+                        print( 'Move camera 3', spectator_transform )                    
+                    elif event.key == pygame.K_w:
+                        randomize_weather(world)                
+                        print( 'Randomize weather' )
 
             # Sleep to ensure consistent loop timing
             clock.tick(60)

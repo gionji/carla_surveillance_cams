@@ -361,7 +361,6 @@ def main():
             clock.tick(60)
 
 
-
     finally:
         print('destroying actors')
         for camera in objects_list:
@@ -374,6 +373,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
