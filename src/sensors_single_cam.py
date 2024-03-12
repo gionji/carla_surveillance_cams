@@ -89,8 +89,11 @@ def generate_camera_grid(sensor_data, grid_size, screen_size):
         col = i % grid_size[0]
 
         # Convert RGBA image to RGB
+        #print(f'i = {i}, image.shape = {image.shape}')
         if image.shape[2] == 4:
+
             image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+
 
         # Resize the image to fit in the grid cell
         resized_image = cv2.resize(image, (cell_width, cell_height))
@@ -322,18 +325,21 @@ def main():
         ]
 
         # Update the sensor_data dictionary to include the different cameras sensors
-        sensor_data = {'rgb_image_01': np.zeros((height, width, 4)),
-                       'rgb_image_02': np.zeros((height, width, 4)),
-                       'rgb_image_03': np.zeros((height, width, 4)),
-                       'depth_image_01': np.zeros((height, width, 4)),
-                       'depth_image_02': np.zeros((height, width, 4)),
-                       'depth_image_03': np.zeros((height, width, 4)),
-                       'inst_image_01': np.zeros((height, width, 4)),
-                       'inst_image_02': np.zeros((height, width, 4)),
-                       'inst_image_03': np.zeros((height, width, 4)),
-                       'opt_image_01': np.zeros((height, width, 4)),
-                       'opt_image_02': np.zeros((height, width, 4)),
-                       'opt_image_03': np.zeros((height, width, 4))
+        sensor_width = 800
+        sensor_height = 600
+
+        sensor_data = {'rgb_image_01': np.zeros((sensor_width, sensor_height, 3)),
+                       'rgb_image_02': np.zeros((sensor_width, sensor_height, 3)),
+                       'rgb_image_03': np.zeros((sensor_width, sensor_height, 3)),
+                       'depth_image_01': np.zeros((sensor_width, sensor_height, 4)),
+                       'depth_image_02': np.zeros((sensor_width, sensor_height, 4)),
+                       'depth_image_03': np.zeros((sensor_width, sensor_height, 4)),
+                       'inst_image_01': np.zeros((sensor_width, sensor_height, 3)),
+                       'inst_image_02': np.zeros((sensor_width, sensor_height, 3)),
+                       'inst_image_03': np.zeros((sensor_width, sensor_height, 3)),
+                       'opt_image_01': np.zeros((sensor_width, sensor_height, 3)),
+                       'opt_image_02': np.zeros((sensor_width, sensor_height, 3)),
+                       'opt_image_03': np.zeros((sensor_width, sensor_height, 3))
         }
 
 

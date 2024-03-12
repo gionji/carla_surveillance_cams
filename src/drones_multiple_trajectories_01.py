@@ -178,7 +178,7 @@ def main():
         max_values = carla.Location(x=50, y=50, z=50)
 
         # Create and start threads for flying drones
-        num_drones = 5  # Adjust the number of drones as needed
+        num_drones = 3  # Adjust the number of drones as needed
         threads = []
         for _ in range(num_drones):
             # Generate random starting and ending transforms within the cubic area.
