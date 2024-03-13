@@ -527,6 +527,7 @@ def generate_cropouts(crop_data, rgb_data, segmentation_data, w, h):
         # We assume here that only 1 cropout occurs in each image
         cropped = get_crop(image, objs[name], w, h)
         crop_data[name] = cropped
+        crop_data[f'{name}_meta'] = objs[name]
 
 
 
@@ -555,11 +556,14 @@ def signal_img_captured(mq, date_time, rgb_crops, id):
 
 
     for i, (name, image) in enumerate(rgb_crops.items()):
+        if "meta" in name:
+            continue
         #print(f'Captured object at time {date_time} from sensor: {name} of size {image.shape}')
         # publish mqtt command
         #print(image)
+        meta = rgb_crops[f'{name}_meta']
         if image is not None:
-            mq.publish_capture_result(name, date_time, id)
+            mq.publish_capture_result(name, date_time, id, meta)
         #upload_crop(image, name, date_time, id)
 
     # send image to REST interface
@@ -638,18 +642,18 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
         opt_ref_obj = []
 
         for i, transf in enumerate(sensor_transforms):
-            rgb_ref_obj.append((world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.rgb', fov_str, rgb_data, objects_list, rgb_callback, f'rgb_image_{i+1:02}'))
+            rgb_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.rgb', fov_str, rgb_data, objects_list, rgb_callback, f'rgb_image_{i+1:02}'))
             if depth:
                 depth_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.depth', fov_str, depth_data, objects_list, depth_callback, f'depth_image_{i+1:02}'))
             if segment:
                 seg_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.instance_segmentation', fov_str, inst_data, objects_list, inst_callback, f'inst_image_{i+1:02}'))
             if opt:
-                opt_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.optical_flow', fov_str, inst_data, objects_list, inst_callback, f'opt_image_{i+1:02}'))
+                opt_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.optical_flow', fov_str, opt_data, objects_list, optiflow_callback, f'opt_image_{i+1:02}'))
         pygame.init()
 
         done = False
         showDebug = True
-        showCameras = False
+        showCameras = True
 
         size = (640, 1080) #(1920, 1080)
         if showCameras:
@@ -678,12 +682,12 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
 
             #stream_sensor_video(rgb_data)
 
-            #if mq.activeCameras:
-            generate_cropouts(crop_data, rgb_data, inst_data, w=crop_w, h=crop_h)
+            if mq.activeCameras:
+                generate_cropouts(crop_data, rgb_data, inst_data, w=crop_w, h=crop_h)
             #print(crop_data['rgb_image_01'][0:5, 1, :])
-            image_id += 1
+                image_id += 1
 
-            signal_img_captured(mq, date_time, crop_data, image_id)
+                signal_img_captured(mq, date_time, crop_data, image_id)
             #print('after')
 
 
@@ -702,6 +706,9 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
                 if segment:
                     num_sensor_types += 1
                     sensor_data.append(inst_data)
+                if opt:
+                    num_sensor_types += 1
+                    sensor_data.append(opt_data)
 
                 grid_view = generate_camera_grid(sensor_data, (len(sensor_transforms), num_sensor_types), size)  # Pass screen size
 
