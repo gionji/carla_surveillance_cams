@@ -165,11 +165,17 @@ class MqttInterface:
         self.client.publish(MQTT_TOPIC_DETECT_PUBLISH, json.dumps(detection_result))
         print("Published detection result.")
 
-    def publish_capture_result(self, name, datetime, id):
+    def publish_capture_result(self, name, datetime, id, meta):
+        (x1, y1), (x2, y2) = meta['cropouts'][0]
         result = {
             "time": datetime,
             "name": name,
-            "id": id
+            "id": id,
+            "x1": int(x1),
+            "x2": int(x2),
+            "y1": int(y1),
+            "y2": int(y2)
+
         }
         self.client.publish(f'{MQTT_TOPIC_VISERCAM_PUBLISH}/cam_{name}', json.dumps(result))
         #print("Published capture result.")
