@@ -41,6 +41,8 @@ import numpy as np
 import cv2
 import struct
 
+from drones_multiple_trajectories_02 import MultiDroneSimulation
+
 try:
     import pygame
     from pygame.locals import K_ESCAPE
@@ -569,9 +571,45 @@ def signal_img_captured(mq, date_time, rgb_crops, id):
     # send image to REST interface
     pass
 
+def save_camera_positions(filename, ref_objs):
+    with open(filename, 'w') as f:
+        for obj in ref_objs:
+            transform = obj.get_transform()
+            position = transform.location
+            rotation = transform.rotation
+            f.write(f"Object: {obj.id}\n")
+            f.write(f"Position: ({position.x}, {position.y}, {position.z})\n")
+            f.write(f"Rotation: ({rotation.roll}, {rotation.pitch}, {rotation.yaw})\n")
+            f.write("\n")
+
+
+def load_camera_positions(filename):
+    transforms = []
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith("Object:"):
+                obj_id = int(lines[i].split(":")[1].strip())
+                pos_line = lines[i + 1].split(":")[1].strip().replace('(', '').replace(')', '').split(',')
+                position = carla.Location(float(pos_line[0]), float(pos_line[1]), float(pos_line[2]))
+                rot_line = lines[i + 2].split(":")[1].strip().replace('(', '').replace(')', '').split(',')
+                rotation = carla.Rotation(float(rot_line[0]), float(rot_line[1]), float(rot_line[2]))
+                transform = carla.Transform(position, rotation)
+                transforms.append((obj_id, transform))
+                i += 3
+            else:
+                i += 1
+    return transforms
+
+
+
 
 def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees, crop_w, crop_h):
     objects_list = []
+
+    filename = './cameras.transforms'
+
 
     try:
         # First of all, we need to create the client that will send the requests
@@ -624,7 +662,7 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
 
         # Move the spectator close to the spawned vehicle
         spectator = world.get_spectator()
-        spectator.set_transform( carla.Transform(carla.Location(x=5, y=10.0, z=67), carla.Rotation(pitch=-90, yaw=-90)) )
+        #spectator.set_transform( carla.Transform(carla.Location(x=5, y=10.0, z=67), carla.Rotation(pitch=-90, yaw=-90)) )
 
         # Props: catalogue
         # https://carla.readthedocs.io/en/latest/catalogue_props/
@@ -738,6 +776,54 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
                     elif event.key == pygame.K_w:
                         randomize_weather(world)
                         print( 'Randomize weather' )
+
+                    elif event.key == pygame.K_i:
+                        camera_transforms = load_camera_positions(filename)
+                        print( camera_transforms )
+
+                    elif event.key == pygame.K_l:
+                        camera_transforms = load_camera_positions(filename)
+
+                        for obj, transform in zip([rgb_1_ref_obj, rgb_2_ref_obj, rgb_3_ref_obj], camera_transforms):
+                            obj.set_transform(transform[1])
+
+                        for obj, transform in zip([depth_1_ref_obj, depth_2_ref_obj, depth_3_ref_obj], camera_transforms):
+                            obj.set_transform(transform[1])
+
+                        for obj, transform in zip([seg_1_ref_obj, seg_2_ref_obj, seg_3_ref_obj], camera_transforms):
+                            obj.set_transform(transform[1])
+
+                        for obj, transform in zip([opt_1_ref_obj, opt_2_ref_obj, opt_3_ref_obj], camera_transforms):
+                            obj.set_transform(transform[1])
+
+                        print( 'Loaded cameras positions from file ', filename)
+
+
+                    elif event.key == pygame.K_s:
+                        ref_objs = [rgb_1_ref_obj, rgb_2_ref_obj, rgb_3_ref_obj]
+                        save_camera_positions( filename, ref_objs )
+                        print( 'Saved cameras positions to file ', filename )
+                        print( ref_objs )
+
+
+                    elif event.key == pygame.K_x:
+                        spectator_transform = spectator.get_transform()
+                        min_values=carla.Location(x=spectator_transform.location.x-25,
+                                                  y=spectator_transform.location.y-25,
+                                                  z=spectator_transform.location.z-25 )
+
+                        max_values=carla.Location(x=spectator_transform.location.x+25,
+                                                  y=spectator_transform.location.y+25,
+                                                  z=spectator_transform.location.z+25 )
+
+                        simulation_thread = MultiDroneSimulation(world, num_drones=5, min_values=min_values, max_values=max_values)
+                        # Run the simulation
+                        # Start the simulation thread
+                        simulation_thread.start()
+
+                        # Optionally, you can join the thread if you want the main program to wait for the simulation to finish
+                        #simulation_thread.join()
+                        print( 'Spawn drones in front of spectator' )
 
             # Sleep to ensure consistent loop timing
             clock.tick(60)
