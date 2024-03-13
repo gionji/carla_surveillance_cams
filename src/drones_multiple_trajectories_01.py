@@ -167,6 +167,14 @@ class DroneThread(threading.Thread):
                 obj.destroy()
             print('done.')
 
+
+def kill_all_drones(world, client, filter="*drone*"):
+    drone_list = world.get_actors().filter(filter)
+    for i in drone_list:
+        #print(f"Killing drone {i.id} {get_actor_display_name(i)}")
+        client.apply_batch([carla.command.DestroyActor(x) for x in drone_list])
+
+
 def main():
     try:
         # First of all, we need to create the client that will send the requests
@@ -177,6 +185,8 @@ def main():
 
         # Retrieve the current world running in the simulation.
         world = client.get_world()
+
+        kill_all_drones(world, client, "*drone*")
 
         # Define the minimum and maximum values for the cubic area.
         min_values = carla.Location(x=-16, y=2, z=5)
