@@ -17,12 +17,13 @@ To do that, check lines 290-308.
 import datetime
 import glob
 import os
+import pdb
 import sys
-import json
 from src import mqtt, rest, objects
 from hemligt import *
 
 from flask import Flask, Response
+from src.que import CropObject, ImageQueue
 
 
 try:
@@ -34,9 +35,6 @@ except IndexError:
     pass
 
 import carla
-import argparse
-import random
-import time
 import numpy as np
 import cv2
 import struct
@@ -84,47 +82,70 @@ def draw_debug_grid(world, grid_size=2, distance=20, lifetime=30):
 
 def generate_camera_grid(sensor_data, grid_size, screen_size):
 
-    cols = len(sensor_data)
-    rows = len(sensor_data[0])
+    rows, cols = grid_size
     color = (0, 0, 255)
 
+
+
     cell_width = screen_size[0]
-    cell_height = screen_size[1] // rows
+    cell_height = screen_size[1] #// rows
 
     grid_stack = []
     rgb_stack = []
     for i, (name, image) in enumerate(sensor_data[0].items()):
-        resized_image = cv2.resize(image[:, :, :3], (cell_height, cell_width))
-        cv2.putText(resized_image, name, (0, 20), cv2.FONT_HERSHEY_SIMPLEX, 1,
-                    color, 2, cv2.LINE_AA, True)
+        resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
+        cv2.putText(resized_image, name, (1, 20), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    color, 2, cv2.LINE_AA, False)
         rgb_stack.append(resized_image)
-    grid_stack.append(np.hstack(rgb_stack))
+        #cv2.imshow("resized", resized_image)
+        #cv2.imshow("rgb", rgb_stack[0])
+        #cv2.imshow("rgb vstack", np.vstack(rgb_stack))
+        #cv2.waitKey(0)
+    grid_stack.append(np.vstack(rgb_stack))
 
     depth_stack = []
     if cols > 1:
         for i, (name, image) in enumerate(sensor_data[1].items()):
-            resized_image = cv2.resize(image[:, :, :3], (cell_height, cell_width))
-            cv2.putText(resized_image, name, (0, 20), cv2.FONT_HERSHEY_SIMPLEX, 1,
-                        color, 2, cv2.LINE_AA, True)
+            resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
+            #cv2.putText(resized_image, name, (0, 20), cv2.FONT_HERSHEY_SIMPLEX, 1,
+            #            color, 2, cv2.LINE_AA, True)
             depth_stack.append(resized_image)
-        grid_stack.append(np.hstack(depth_stack))
+        grid_stack.append(np.vstack(depth_stack))
 
     segment_stack = []
     if cols > 2:
         for i, (name, image) in enumerate(sensor_data[2].items()):
-            resized_image = cv2.resize(image[:, :, :3], (cell_height, cell_width))
-            cv2.putText(resized_image, name, (0,20), cv2.FONT_HERSHEY_SIMPLEX, 1,
-                        color, 2, cv2.LINE_AA, True)
+            resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
+            #cv2.putText(resized_image, name, (0,20), cv2.FONT_HERSHEY_SIMPLEX, 1,
+            #            color, 2, cv2.LINE_AA, True)
             segment_stack.append(resized_image)
-        grid_stack.append(np.hstack(segment_stack))
+        grid_stack.append(np.vstack(segment_stack))
+
+    optiflow_stack = []
+    if cols > 3:
+        for i, (name, image) in enumerate(sensor_data[3].items()):
+            resized_image = cv2.resize(image[:, :, :3], (cell_width, cell_height))
+            #cv2.putText(resized_image, name, (0,20), cv2.FONT_HERSHEY_SIMPLEX, 1,
+            #            color, 2, cv2.LINE_AA, True)
+            optiflow_stack.append(resized_image)
+        grid_stack.append(np.vstack(optiflow_stack))
+
+    # cv2.imshow("rgb", grid_stack[0])
+    # cv2.imshow("depth", grid_stack[1])
+    # cv2.imshow("seg", grid_stack[2])
+    # cv2.imshow("opt", grid_stack[3])
+    # cv2.waitKey(0)
 
     # Calculate the dimensions of each grid cell
-    cell_width = screen_size[1] // grid_size[0]
-    cell_height = screen_size[0] // grid_size[1]
+    #cell_width = screen_size[1] // grid_size[0]
+    #cell_height = screen_size[0] // grid_size[1]
 
     # Create a blank canvas to hold the grid view
     #grid_view = np.zeros((screen_size[0], screen_size[1], 3), dtype=np.uint8)
-    grid_view = np.vstack(grid_stack)
+    grid_view = np.hstack(grid_stack)
+
+    #cv2.imshow("grid", grid_view)
+    #cv2.waitKey(0)
 
     # Iterate over each camera image in the sensor_data dictionary
 
@@ -149,25 +170,29 @@ def generate_camera_grid(sensor_data, grid_size, screen_size):
 
 def rgb_callback(image, data_dict, camera_name):
 
-    img = np.array(image.raw_data)
-    img = img.reshape((image.height, image.width, 4))  # Assuming RGBA format
+    #img = np.array(image.raw_data)
+    img = np.reshape(np.copy(image.raw_data), (image.height, image.width, 4))  # Assuming RGBA format
     img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)  # Convert from RGBA to RGB
-    img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
-    img = np.fliplr(img)
+    #print(f"rgb shape: {img.shape}")
+    #img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
+    #print(f"rgb shape after: {img.shape}")
+    #img = np.fliplr(img)
     data_dict[camera_name] = img
 
 def depth_callback(image, data_dict, camera_name):
     image.convert(carla.ColorConverter.LogarithmicDepth)
     img = np.reshape(np.copy(image.raw_data), (image.height, image.width, 4))
-    img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
-    img = np.fliplr(img)
+    #img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
+    #img = np.fliplr(img)
     data_dict[camera_name] = img
 
 def inst_callback(image, data_dict, camera_name):
     img = np.array(image.raw_data).reshape((image.height, image.width, 4))[:, :, :3]
     img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)  # Convert from RGBA to RGB
-    img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
-    img = np.fliplr(img)
+    #print(f"inst shape: {img.shape}")
+    #img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
+    #print(f"inst shape after: {img.shape}")
+    #img = np.fliplr(img)
     data_dict[camera_name] = img
 
 
@@ -207,8 +232,8 @@ def optiflow_callback(optical_flow_image, data_dict, camera_name):
     rgb_flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
 
     # Convert from RGBA to RGB
-    rgb_flow = np.rot90(rgb_flow, -1)  # Rotate the image 90 degrees clockwise
-    rgb_flow = np.fliplr(rgb_flow)
+    #rgb_flow = np.rot90(rgb_flow, -1)  # Rotate the image 90 degrees clockwise
+    #rgb_flow = np.fliplr(rgb_flow)
 
     data_dict[camera_name] = rgb_flow
 
@@ -305,8 +330,12 @@ def center_crop(image, w, h):
 def get_crop(image, obj, w, h):
     if len(obj['cropouts']) > 0:
         (x1, y1), (x2, y2) = obj['cropouts'][0]
+        #if (x2-x1) < 400 or (y2-y1) < 400:
 
-        crop_img = image[int(y1):int(y2), int(x1):int(x2),:]
+        crop_img = np.copy(image[int(y1):int(y2), int(x1):int(x2),0:3]).astype(np.uint8)
+        #print(f'(x1, y1) = ({x1}, {y1}), (x2, y2) = ({x2}, {y2}), x2-x1 = {x2 - x1}, y2-y1={y2 - y1}, image.shape: {image.shape}, crop_img.shape: {crop_img.shape}')
+
+        #print(f"data type: {crop_img.dtype}")
     else:
         return None
     return crop_img
@@ -400,19 +429,23 @@ def extend_crop(xmin, ymin, xmax, ymax, img_width, img_height, crop_w, crop_h, x
 
     x1 = int(xc - crop_w/2) # np.max(0, xc - width/2)
     x2 = int(xc + crop_w / 2)
-    y1 = int(xc - crop_h / 2)
-    y2 = int(xc - crop_h / 2)
+    y1 = int(yc - crop_h / 2)
+    y2 = int(yc + crop_h / 2)
 
     if x1 < 0:
         x1, x2 = 0, crop_w
-    if x2 >= width:
-        x1, x2 = width - crop_w - 1, width - 1
+    elif x2 >= img_width:
+        x1, x2 = img_width - crop_w, img_width
     if y1 < 0:
         y1, y2 = 0, crop_h
-    if y2 >= height:
-        y1, y2 = height - crop_h - 1, height - 1
+    elif y2 >= img_height:
+        y1, y2 = img_height - crop_h, img_height
 
     #print(f'xmin = {x1}, xmax={x2}, ymin = {y1}, ymax={y2}')
+    #if y2 - y1 < crop_h:
+    #    print("y trigger")
+    #if x2 - x1 < crop_w:
+    #    print("x trigger")
 
     return np.array([[x1, y1], [x2, y2]])
     #return crop_info[2:]
@@ -430,7 +463,7 @@ def find_bounding_boxes(instance_map, classes, out_classes, threshold=100, occlu
     # Combine G and B channels to get the instance ID
     combined_instance_ids = (instance_map[:,:,g_ch].astype(np.uint32) << 8) + instance_map[:,:,b_ch]
 
-    img_width, img_height = instance_map.shape[0:2]
+    img_height, img_width = instance_map.shape[0:2]
     #print(f'width = {img_width}, height: = {img_height}')
 
     # Iterate over specified class IDs
@@ -497,9 +530,9 @@ def find_bounding_boxes(instance_map, classes, out_classes, threshold=100, occlu
                     pass
                     #print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id >> 8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}, ratio: {occluded_pixel_ratio}")
             else:
-                pass
-                #print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id>>8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}")
 
+                #print(f"DROPPED Class: {class_id} ({class_name}), Instance: {instance_id} (g: {instance_id>>8}, b: {instance_id & 0xFF}) @ ({xmin}, {ymin}) found in {num_pixels} pixels, box area: {box_area}")
+                pass
 
 
             # Draw bounding box on the original image
@@ -512,25 +545,38 @@ def find_bounding_boxes(instance_map, classes, out_classes, threshold=100, occlu
 
     return return_val
 
-def generate_cropouts(crop_data, rgb_data, segmentation_data, w, h):
+def generate_cropouts(crop_data, crops_que, rgb_data, segmentation_data, w, h, id):
 
     # here we are cheating by using segmentation information to find the drones
     objs = {}
     for i, (name, image) in enumerate(segmentation_data.items()):
         rgb_name = name.replace('inst_image', 'rgb_image')
+
+        #print(f"seg {name} shape: {image.shape}")
+
         # the objects dict will hold for each image in rgb_data dict a list of box coords for the drones
         #objs[rgb_name] = get_objects(image)
-        objs[rgb_name] = find_bounding_boxes(image, objects.available_classes, objects.out_classes)
+        # the objs dict below will contain for each rgb sensor a list with found objects for the current image
+        objs[rgb_name] = find_bounding_boxes(image, objects.available_classes, objects.out_classes, threshold=50)
+        #print(f'{rgb_name} objs: {objs[rgb_name]}')
 
 
     for i, (name, image) in enumerate(rgb_data.items()):
 
-
-        # We assume here that only 1 cropout occurs in each image
-        cropped = get_crop(image, objs[name], w, h)
-        crop_data[name] = cropped
-        crop_data[f'{name}_meta'] = objs[name]
-
+        #print(f"name: {name}")
+        # if we have at least one object, do the crop on the first object
+        if len(objs[name]['bbox']) > 0:
+            cropped = get_crop(image, objs[name], w, h)
+            crop = CropObject(image=cropped, metadata=objs[name], id=id[i])
+            if cropped.shape != (400, 400, 3):
+                print(f"crop shape: {cropped.shape}")
+            crops_que[name].push(crop)
+            crop_data[name] = cropped
+            crop_data[f'{name}_meta'] = objs[name]
+            id[i] += 1
+            #print(f"img id = {id}")
+        else:
+            crop_data[name] = None
 
 
 def stream_sensor_video(rgb_data):
@@ -554,7 +600,7 @@ def upload_crop(image, name, date_time, id):
 
 
 
-def signal_img_captured(mq, date_time, rgb_crops, id):
+def signal_img_captured(mq, date_time, rgb_crops, ids):
 
 
     for i, (name, image) in enumerate(rgb_crops.items()):
@@ -563,15 +609,12 @@ def signal_img_captured(mq, date_time, rgb_crops, id):
         #print(f'Captured object at time {date_time} from sensor: {name} of size {image.shape}')
         # publish mqtt command
         #print(image)
-        meta = rgb_crops[f'{name}_meta']
         if image is not None:
-            mq.publish_capture_result(name, date_time, id, meta)
-        #upload_crop(image, name, date_time, id)
+            meta = rgb_crops[f'{name}_meta']
+            mq.publish_capture_result(name, date_time, ids[i], meta)
 
-    # send image to REST interface
-    pass
 
-def save_camera_positions(filename, ref_objs):
+def save_camera_positions(filename, ref_objs, spectator):
     with open(filename, 'w') as f:
         for obj in ref_objs:
             transform = obj.get_transform()
@@ -579,8 +622,15 @@ def save_camera_positions(filename, ref_objs):
             rotation = transform.rotation
             f.write(f"Object: {obj.id}\n")
             f.write(f"Position: ({position.x}, {position.y}, {position.z})\n")
-            f.write(f"Rotation: ({rotation.roll}, {rotation.pitch}, {rotation.yaw})\n")
+            f.write(f"Rotation: ({rotation.pitch}, {rotation.yaw}, {rotation.roll})\n")
             f.write("\n")
+        transform = spectator.get_transform()
+        position = transform.location
+        rotation = transform.rotation
+        f.write(f"Spectator: {obj.id}\n")
+        f.write(f"Position: ({position.x}, {position.y}, {position.z})\n")
+        f.write(f"Rotation: ({rotation.pitch}, {rotation.yaw}, {rotation.roll})\n")
+        f.write("\n")
 
 
 def load_camera_positions(filename):
@@ -598,14 +648,29 @@ def load_camera_positions(filename):
                 transform = carla.Transform(position, rotation)
                 transforms.append((obj_id, transform))
                 i += 3
+            elif lines[i].startswith("Spectator:"):
+                obj_id = int(lines[i].split(":")[1].strip())
+                pos_line = lines[i + 1].split(":")[1].strip().replace('(', '').replace(')', '').split(',')
+                position = carla.Location(float(pos_line[0]), float(pos_line[1]), float(pos_line[2]))
+                rot_line = lines[i + 2].split(":")[1].strip().replace('(', '').replace(')', '').split(',')
+                rotation = carla.Rotation(float(rot_line[0]), float(rot_line[1]), float(rot_line[2]))
+                transform = carla.Transform(position, rotation)
+                transforms.append((0, transform)) # indicate spectator with id 0
+                i += 3
             else:
                 i += 1
     return transforms
 
 
+def kill_all_drones(world, client, filter="*drone*"):
+    drone_list = world.get_actors().filter(filter)
+    for i in drone_list:
+        #print(f"Killing drone {i.id} {get_actor_display_name(i)}")
+        client.apply_batch([carla.command.DestroyActor(x) for x in drone_list])
 
 
-def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees, crop_w, crop_h):
+
+def main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, fov_degrees, crop_w, crop_h):
     objects_list = []
 
     filename = './cameras.transforms'
@@ -635,20 +700,23 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
         # Set FOV for all cameras
         fov_str = str(fov_degrees)
 
-        sensor_type_names = [
-            blueprint_library.find('sensor.camera.rgb'),
-            blueprint_library.find('sensor.camera.depth'),
-            blueprint_library.find('sensor.camera.instance_segmentation')
-        ]
+        # sensor_type_names = [
+        #     blueprint_library.find('sensor.camera.rgb'),
+        #     blueprint_library.find('sensor.camera.depth'),
+        #     blueprint_library.find('sensor.camera.instance_segmentation')
+        # ]
 
-        sensor_transforms = [
-            carla.Transform( carla.Location(x=-20, y=0.0, z=20.4), carla.Rotation(yaw=45.0,  pitch=0.0, roll=0.0) ),
-            carla.Transform( carla.Location(x=-20, y=20,  z=20.4), carla.Rotation(yaw=0.0,   pitch=0.0, roll=0.0))  ,
-            carla.Transform( carla.Location(x=0,   y=20,  z=20.4), carla.Rotation(yaw=-45.0, pitch=0.0, roll=0.0))  
-        ]
+        # sensor_transforms = [
+        #     carla.Transform( carla.Location(x=-20, y=0.0, z=20.4), carla.Rotation(yaw=45.0,  pitch=0.0, roll=0.0) ),
+        #     carla.Transform( carla.Location(x=-20, y=20,  z=20.4), carla.Rotation(yaw=0.0,   pitch=0.0, roll=0.0))  ,
+        #     carla.Transform( carla.Location(x=0,   y=20,  z=20.4), carla.Rotation(yaw=-45.0, pitch=0.0, roll=0.0))
+        # ]
         depth = True
         segment = True
         opt = True
+        done = False
+        showDebug = True
+        showCameras = True
 
         # Update the sensor_data dictionary to include the different cameras sensors
         if depth:
@@ -666,7 +734,7 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
 
         # Props: catalogue
         # https://carla.readthedocs.io/en/latest/catalogue_props/
-        rererence_actor_bp = random.choice(blueprint_library.filter('static.prop.glasscontainer'))
+        reference_actor_bp = random.choice(blueprint_library.filter('static.prop.glasscontainer'))
 
         # Draw a debug 3d grid for debugging
         draw_debug_grid(world)
@@ -674,41 +742,66 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
         #
         ### Sensor spawning
         #
+        num_sensor_types = 1
+
         rgb_ref_obj = []
         depth_ref_obj = []
         seg_ref_obj = []
         opt_ref_obj = []
 
         for i, transf in enumerate(sensor_transforms):
-            rgb_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.rgb', fov_str, rgb_data, objects_list, rgb_callback, f'rgb_image_{i+1:02}'))
+            rgb_ref_obj.append(spawn_camera(world, blueprint_library, reference_actor_bp, transf, 'sensor.camera.rgb', fov_str, rgb_data, objects_list, rgb_callback, f'rgb_image_{i+1:02}'))
             if depth:
-                depth_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.depth', fov_str, depth_data, objects_list, depth_callback, f'depth_image_{i+1:02}'))
+                depth_ref_obj.append(spawn_camera(world, blueprint_library, reference_actor_bp, transf, 'sensor.camera.depth', fov_str, depth_data, objects_list, depth_callback, f'depth_image_{i+1:02}'))
             if segment:
-                seg_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.instance_segmentation', fov_str, inst_data, objects_list, inst_callback, f'inst_image_{i+1:02}'))
+                seg_ref_obj.append(spawn_camera(world, blueprint_library, reference_actor_bp, transf, 'sensor.camera.instance_segmentation', fov_str, inst_data, objects_list, inst_callback, f'inst_image_{i+1:02}'))
             if opt:
-                opt_ref_obj.append(spawn_camera(world, blueprint_library, rererence_actor_bp, transf, 'sensor.camera.optical_flow', fov_str, opt_data, objects_list, optiflow_callback, f'opt_image_{i+1:02}'))
+                opt_ref_obj.append(spawn_camera(world, blueprint_library, reference_actor_bp, transf, 'sensor.camera.optical_flow', fov_str, opt_data, objects_list, optiflow_callback, f'opt_image_{i+1:02}'))
+
+        if depth:
+            num_sensor_types += 1
+        if segment:
+            num_sensor_types += 1
+        if opt:
+            num_sensor_types += 1
+
         pygame.init()
 
-        done = False
-        showDebug = True
-        showCameras = True
 
-        size = (640, 1080) #(1920, 1080)
+        size = (width, height) # full size image sizes
+        aspect_ratio = width / height
+        window_max_height = 1080 # display window total height
+        window_max_width  = 1920
+
+        if num_sensor_types >= len(sensor_transforms):
+            # width limits the grid size
+            window_width = window_max_width
+            tile_width = int(window_width / num_sensor_types)
+            tile_height = int(tile_width / aspect_ratio)
+            window_height = tile_height * len(sensor_transforms)
+        else:
+            # height limits the grid size
+            window_height = window_max_height
+            tile_height = int(window_height / len(sensor_transforms))
+            tile_width = int(tile_height * aspect_ratio)
+            window_width = tile_width * num_sensor_types
+
+        window_size = (window_width, window_height)
         if showCameras:
             pygame.display.set_caption("VISER Sim")
-            screen = pygame.display.set_mode(size)
-        image_id = 0
+            screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
+        image_id = [0 for _ in range(len(sensor_transforms))]
 
         #control = carla.VehicleControl()
         clock = pygame.time.Clock()
 
 
         while not done:
-            keys = pygame.key.get_pressed() 
-            
+            keys = pygame.key.get_pressed()
+
             # Made the keyboard control into a function
             #keyboard_control(keys)
-            
+
             current_time = datetime.datetime.now()
             date_time = current_time.strftime("%Y-%m-%d %H:%M:%S.%f")
 
@@ -720,10 +813,11 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
 
             #stream_sensor_video(rgb_data)
 
-            if mq.activeCameras:
-                generate_cropouts(crop_data, rgb_data, inst_data, w=crop_w, h=crop_h)
-            #print(crop_data['rgb_image_01'][0:5, 1, :])
-                image_id += 1
+            if True:#mq.activeCameras:
+                generate_cropouts(crop_data, crops_que, rgb_data, inst_data, w=crop_w, h=crop_h, id=image_id)
+                # print(f"img id = {image_id}") #crop_data['rgb_image_01'][0:5, 1, :])
+                #crops_que['rgb_image_01'].inspect()
+                #image_id += 1
 
                 signal_img_captured(mq, date_time, crop_data, image_id)
             #print('after')
@@ -748,14 +842,16 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
                     num_sensor_types += 1
                     sensor_data.append(opt_data)
 
-                grid_view = generate_camera_grid(sensor_data, (len(sensor_transforms), num_sensor_types), size)  # Pass screen size
+                grid_view = generate_camera_grid(sensor_data, (len(sensor_transforms), num_sensor_types), (tile_width, tile_height))  # Pass screen size
 
                 # Update the display and check for the quit event
-                #size = (grid_view.shape[0], grid_view.shape[1])
-                #screen = pygame.display.set_mode(size)
-                pygame.display.flip()
+                size = (grid_view.shape[1], grid_view.shape[0])
+                if size != window_size:
+                    screen = pygame.display.set_mode(size, pygame.RESIZABLE)
+                    window_size = size
+                #pygame.display.flip()
                 pygame.display.update()
-                screen.blit(pygame.surfarray.make_surface(grid_view), (0, 0)) # To display with Pygame
+                screen.blit(pygame.surfarray.make_surface(grid_view.swapaxes(0,1)), (0, 0)) # To display with Pygame
 
             # Better to use OpenCV to display both RGB and Depth Image
 
@@ -777,33 +873,41 @@ def main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees,
                         randomize_weather(world)
                         print( 'Randomize weather' )
 
-                    elif event.key == pygame.K_i:
-                        camera_transforms = load_camera_positions(filename)
-                        print( camera_transforms )
+                    # elif event.key == pygame.K_i:
+                    #     camera_transforms = load_camera_positions(filename)
+                    #     print( camera_transforms )
 
                     elif event.key == pygame.K_l:
                         camera_transforms = load_camera_positions(filename)
 
-                        for obj, transform in zip([rgb_1_ref_obj, rgb_2_ref_obj, rgb_3_ref_obj], camera_transforms):
-                            obj.set_transform(transform[1])
+                        for indx in range(len(sensor_transforms)):
 
-                        for obj, transform in zip([depth_1_ref_obj, depth_2_ref_obj, depth_3_ref_obj], camera_transforms):
-                            obj.set_transform(transform[1])
+                            rgb_ref_obj[indx].set_transform(camera_transforms[indx][1])
+                            if depth:
+                                depth_ref_obj[indx].set_transform(camera_transforms[indx][1])
+                            if segment:
+                                seg_ref_obj[indx].set_transform(camera_transforms[indx][1])
+                            if opt:
+                                opt_ref_obj[indx].set_transform(camera_transforms[indx][1])
 
-                        for obj, transform in zip([seg_1_ref_obj, seg_2_ref_obj, seg_3_ref_obj], camera_transforms):
-                            obj.set_transform(transform[1])
-
-                        for obj, transform in zip([opt_1_ref_obj, opt_2_ref_obj, opt_3_ref_obj], camera_transforms):
-                            obj.set_transform(transform[1])
+                        for (obj_id, t) in camera_transforms:
+                            if obj_id == 0:
+                                spectator.set_transform(t)
 
                         print( 'Loaded cameras positions from file ', filename)
 
+                    elif event.key == pygame.K_o:
+                        opt = not opt
+                    elif event.key == pygame.K_d:
+                        depth = not depth
+                    elif event.key == pygame.K_i:
+                        segment = not segment
 
                     elif event.key == pygame.K_s:
-                        ref_objs = [rgb_1_ref_obj, rgb_2_ref_obj, rgb_3_ref_obj]
-                        save_camera_positions( filename, ref_objs )
-                        print( 'Saved cameras positions to file ', filename )
-                        print( ref_objs )
+                        #ref_objs = [rgb_1_ref_obj, rgb_2_ref_obj, rgb_3_ref_obj]
+                        save_camera_positions(filename, rgb_ref_obj, world.get_spectator())
+                        print( 'Saved cameras positions to file ', filename)
+                        #print( rgb_ref_obj )
 
 
                     elif event.key == pygame.K_x:
@@ -852,26 +956,31 @@ def setup_mqtt():
     return mq
 
 
-def     setup_flask(sensor_data, crops_data):
+from flask import request
+from flask_cors import CORS
+
+def     setup_flask(sensor_data, crops_data, crop_w, crop_h, crops_que):
     # Initialize Flask app
     app = Flask(__name__)
-
+    CORS(app)
     # will not run in debug mode because it is in sep thread
     #app.debug = True
 
     def rgb_transform(img, width, height):
-        img = img.reshape((width, height, 3))  # Assuming RGBA format
-        img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)  # Convert from RGBA to RGB
-        img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
-        img = np.fliplr(img)
+        #img = img.reshape((width, height, 3))  # Assuming RGBA format
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)  # Convert from RGBA to RGB
+        #img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
+        #img = np.fliplr(img)
         return img
 
 
-    def crop_transform(img, width, height):
-        img = img.reshape((width, height, 3))  # Assuming RGBA format
-        img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)  # Convert from RGBA to RGB
-        img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
-        img = np.fliplr(img)
+    def crop_transform(img, width, height, channels):
+        #img = img.reshape((width, height, channels))  # Assuming RGBA format
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)  # Convert from RGBA to RGB
+
+        #img = np.rot90(img, -1)  # Rotate the image 90 degrees clockwise
+        #img = np.fliplr(img)
+        #print(f"crop size: {img.shape}")
 
         return img
 
@@ -893,18 +1002,31 @@ def     setup_flask(sensor_data, crops_data):
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+    @app.route('/inspect/<sensor_key>')
+    def inspect(sensor_key):
+
+        json_str = crops_que[sensor_key].inspect_flask()
+        response = Response(response=json_str, status=200, mimetype="application/json")
+        return response
+
+
     @app.route('/crop_feed/<sensor_key>')
     def crop_feed(sensor_key):
-
+        crop_id = request.args.get('id', default=1, type=int)
+        #print(crop_id)
+        #crops_que[sensor_key].inspect()
         def generate():
-            if sensor_key in crops_data:
-                # Convert the image data to bytes
-                if crops_data[sensor_key] is not None:
-                    width = crops_data[sensor_key].shape[0]
-                    height = crops_data[sensor_key].shape[1]
-                    saved_crop[sensor_key] = crop_transform(crops_data[sensor_key], width, height)
 
-                ret, buffer = cv2.imencode('.jpg', saved_crop[sensor_key])
+            crop_obj = crops_que[sensor_key].pop(crop_id)
+            if crop_obj is not None:
+                img = crop_obj.image
+                width = img.shape[0]
+                height = img.shape[1]
+                channels = img.shape[2]
+                print(f"cropout {sensor_key} id: {crop_obj.id}, width: {width}, height: {height}, components: {channels}")
+                saved_crop = crop_transform(img, width, height, channels) #, crop_id)
+
+                ret, buffer = cv2.imencode('.jpg', saved_crop)
                 image_data = buffer.tobytes()
                 # Yield the image data as a stream
                 yield (b'--frame\r\n'
@@ -935,13 +1057,15 @@ if __name__ == '__main__':
         carla.Transform(carla.Location(x=-24, y=26, z=20.4), carla.Rotation(yaw=0.0, pitch=-5.0, roll=0.0)),
         carla.Transform(carla.Location(x=23, y=28.6, z=20.4), carla.Rotation(yaw=180.0, pitch=-5.0, roll=0.0))
     ]
+
+    #crops_que = [ImageQueue(max_size=4) for _ in range(len(sensor_transforms))]
     rgb_data = {f'rgb_image_{i + 1:02}': np.zeros((height, width, 4)) for i in range(len(sensor_transforms))}
-    crop_data = {f'rgb_image_{i + 1:02}': np.zeros((crop_h, crop_w, 4)) for i in range(len(sensor_transforms))}
-    saved_crop = {f'rgb_image_{i + 1:02}': np.zeros((crop_h, crop_w, 4)) for i in range(len(sensor_transforms))}
+    crop_data = {f'rgb_image_{i + 1:02}': np.zeros((crop_h, crop_w, 3)) for i in range(len(sensor_transforms))}
+    crops_que = {f'rgb_image_{i + 1:02}': ImageQueue(max_size=6, name=f'crop_{i + 1:02}') for i in range(len(sensor_transforms))}
 
 
-    setup_flask(rgb_data, crop_data)
-    main(mq, rgb_data, crop_data, sensor_transforms, width, height, fov_degrees, crop_w, crop_h)
+    setup_flask(rgb_data, crop_data, crop_w, crop_h, crops_que)
+    main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, fov_degrees, crop_w, crop_h)
 
 
 

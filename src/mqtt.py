@@ -1,11 +1,11 @@
 import paho.mqtt.client as mqtt  # import the client1
-import pdb
-from datetime import datetime
 import json
-import time, sys
+import time
 import threading
+
+from src import que
+
 # import detect
-from hemligt import *
 
 debug = False
 rxMess = None
@@ -17,6 +17,7 @@ MQTT_TOPIC_VISERCAM_SUBSCRIBE = "visercam/cmd"
 MQTT_TOPIC_VISERCAM_PUBLISH = "visercam/capture"
 MQTT_TOPIC_DETECT_PUBLISH = "detect"
 
+debug = True
 
 def on_message(client, userdata, message):
     if debug:
@@ -27,6 +28,7 @@ def on_message(client, userdata, message):
 
     global rxMess
     global newMess
+    global topic
     rxMess = message
     newMess = True
 
@@ -54,7 +56,7 @@ def on_log(client, userdata, level, buf):
 
 
 class MqttInterface:
-    def __init__(self, broker_address='localhost', port=1883, username='user', password='ssch'):
+    def __init__(self, broker_address='localhost', port=1883, username='user', password='ssch', client_name="visersim"):
 
         self.broker_address = broker_address
         self.port = port
@@ -65,7 +67,7 @@ class MqttInterface:
         mqtt.Client.retry_count = 0  #
         # pdb.set_trace()
 
-        self.client = mqtt.Client("viser_client_name")  # create new instance
+        self.client = mqtt.Client(client_name)  # create new instance
         self.client.on_connect = on_connect  # attach function to callback
         self.client.on_disconnect = on_disconnect
         self.client.on_message = on_message
@@ -73,7 +75,11 @@ class MqttInterface:
         self.client.username_pw_set(username=username, password=password)
 
         self.activeCameras = []
+        self.activeDetection = True
+        self.processMessage = False
         self.det = None
+        self.youve_got_post = False
+        self.msg_queue = que.ImageQueue(max_size=30, name="detection message queue")
 
         thr = threading.Thread(target=self._checkMessage)
         thr.daemon = True
@@ -97,28 +103,25 @@ class MqttInterface:
 
                 if newMess:
                     newMess = False
-                    print("message received ", str(rxMess.payload.decode("utf-8")))
+                    #print("message received ", str(rxMess.payload.decode("utf-8")))
                     print("message topic=", rxMess.topic)
-                    print("message qos=", rxMess.qos)
-                    print("message retain flag=", rxMess.retain)
-                    if str(rxMess.payload.decode("utf-8")) == 'ON':
-                        print('Turn on camera capture')
-                        self.activeCameras = True
-                    elif str(rxMess.payload.decode("utf-8")) == 'OFF':
-                        print('Turn off camera capture')
-                        self.activeCameras = False
-                    # elif self.thrDet != None:
-                    #     print('Turn off detection')
-                    #     self.det.runFlag = False
-                    #     try:
-                    #         # if self.thrDet.isAlive():
-                    #         self.thrDet.join()
-                    #         self.thrDet = None
-                    #         self.det = None
-                    #
-                    #     except:
-                    #         print('could not join thread')
-                    #         pass
+                    #print("message qos=", rxMess.qos)
+                    #print("message retain flag=", rxMess.retain)
+                    data = json.loads(rxMess.payload.decode("utf-8"))
+                    if "cmd" in rxMess.topic:
+                        command = data["cmd"]
+                        if command == "ON":
+                            print('Turn on camera capture')
+                            self.activeCameras = True
+                            self.activeDetection = True
+                        elif command == "OFF":
+                            print('Turn off camera capture')
+                            self.activeCameras = False
+                            self.activeDetection = False
+
+                    elif "visercam/capture/" in rxMess.topic:
+                        self.msg_queue.push(rxMess)
+
             time.sleep(0.1)
 
     def connect(self):
@@ -155,16 +158,16 @@ class MqttInterface:
             self.count += 1
 
     def subscribe(self, topic='cmnd/detect/person/ENABLED'):
+        if debug:
+            print(f"subscribing to topic {topic}")
         self.client.subscribe(topic)
 
-    def publish_detection_result(self, detected_class, box_coords):
-        detection_result = {
-            "class": detected_class,
-            "box_coordinates": box_coords
-        }
-        self.client.publish(MQTT_TOPIC_DETECT_PUBLISH, json.dumps(detection_result))
+    def publish_detection_result(self, topic, detection_result):
+
+        self.client.publish(topic, json.dumps(detection_result))
         print("Published detection result.")
 
+    # this is used by the entity that captures the images and crops out a section for detection
     def publish_capture_result(self, name, datetime, id, meta):
         (x1, y1), (x2, y2) = meta['cropouts'][0]
         result = {

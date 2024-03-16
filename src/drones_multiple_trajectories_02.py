@@ -111,8 +111,8 @@ class DroneThread(threading.Thread):
             objects_list.append(vehicle)
 
             # Calculate the step size for each component
-            n_steps = 100
-            m_time = 10.0
+            n_steps = 200
+            m_time = 20.0
 
             # Move the object to the ending transform in n steps using the specified trajectory function
             for step in range(n_steps):
