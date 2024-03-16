@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Inspect Images</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr; /* Equal width for each column */
+            gap: 10px; /* Gap between columns */
+        }
+        .column {
+            padding: 10px;
+            border: 1px solid #ddd;
+            overflow-y: auto; /* Enable vertical scrolling */
+            height: 200px; /* Set a fixed height */
+        }
+        canvas {
+            max-width: 100%; /* Ensure chart fits within container */
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="row">
+        <div class="column" id="column1">
+            <h2>RGB Image 01</h2>
+        </div>
+        <div class="column" id="column2">
+            <h2>RGB Image 02</h2>
+        </div>
+        <div class="column" id="column3">
+            <h2>RGB Image 03</h2>
+        </div>
+    </div>
+
+    <!-- Canvas element for the chart -->
+    <canvas id="chart" width="400" height="200"></canvas>
+
+    <script>
+        // Global variable to hold the chart instance
+        let chart;
+
+        // Function to initialize the chart
+        function initializeChart() {
+            const ctx = document.getElementById('chart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['RGB Image 01', 'RGB Image 02', 'RGB Image 03'],
+                    datasets: [{
+                        label: 'Number of Entries',
+                        data: [0, 0, 0], // Initial data, will be updated dynamically
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.2)',
+                            'rgba(54, 162, 235, 0.2)',
+                            'rgba(255, 206, 86, 0.2)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Function to fetch and display data for each URL
+        function fetchDataAndDisplay(url, columnId) {
+            return fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const column = document.getElementById(columnId);
+                    column.innerHTML = ''; // Clear existing content
+                    data.forEach(item => {
+                        const p = document.createElement("p");
+                        p.textContent = `ID: ${item.ID}, BBox: ${JSON.stringify(item.Metadata.bbox)}, Class: ${item.Metadata.class.join(", ")}`;
+                        column.appendChild(p);
+                    });
+                    return data.length;
+                })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                    return 0;
+                });
+        }
+
+        // Function to update the chart with new data
+        function updateChart() {
+            Promise.all([
+                fetchDataAndDisplay('http://localhost:5000/inspect/rgb_image_01', 'column1'),
+                fetchDataAndDisplay('http://localhost:5000/inspect/rgb_image_02', 'column2'),
+                fetchDataAndDisplay('http://localhost:5000/inspect/rgb_image_03', 'column3')
+            ]).then(data => {
+                // Update chart data
+                chart.data.datasets[0].data = data;
+                chart.update();
+            });
+        }
+
+        // Initialize the chart
+        initializeChart();
+
+        // Initial call to update the chart
+        updateChart();
+
+        // Periodically update the chart (e.g., every 5 seconds)
+        setInterval(updateChart, 1000); // Adjust the interval as needed (in milliseconds)
+    </script>
+</body>
+</html>

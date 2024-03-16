@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Videofeed ViserSim</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            height: 100vh;
+        }
+        .frame {
+            width: 800;
+            height: 600;
+            box-sizing: border-box;
+            padding: 10px;
+        }
+        img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="frame"><img src="http://localhost:5000/video_feed/rgb_image_01" id="img1"></div>
+        <div class="frame"><img src="http://localhost:5000/video_feed/rgb_image_02" id="img2"></div>
+        <div class="frame"><img src="http://localhost:5000/video_feed/rgb_image_03" id="img3"></div>
+        <!div class="frame"><img src="http://localhost:5000/crop_feed/rgb_image_01" id="img4"><!/div>
+    </div>
+
+    <script>
+        // Refresh interval in milliseconds (e.g., 60000 milliseconds = 1 minute)
+        var refreshInterval = 500;
+
+        function refreshImage(imageId, baseUrl) {
+            var date = new Date(); // Use the current time to ensure the URL is always unique
+            document.getElementById(imageId).src = baseUrl + "?t=" + date.getTime();
+        }
+
+        function refreshImages() {
+            refreshImage('img1', 'http://localhost:5000/video_feed/rgb_image_01');
+            refreshImage('img2', 'http://localhost:5000/video_feed/rgb_image_02');
+            refreshImage('img3', 'http://localhost:5000/video_feed/rgb_image_03');
+            //refreshImage('img4', '');
+        }
+
+        // Set the interval for refreshing images
+        setInterval(refreshImages, refreshInterval);
+    </script>
+</body>
+</html>

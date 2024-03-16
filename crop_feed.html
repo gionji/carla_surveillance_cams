@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cropouts ViserSim</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            height: 100vh;
+        }
+        .frame {
+            width: 50%;
+            height: 50%;
+            box-sizing: border-box;
+            padding: 10px;
+        }
+        img {
+            width: 400;
+            height: 400;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="frame"><img src="http://localhost:5000/crop_feed/rgb_image_01?id=0" id="img1"></div>
+        <div class="frame"><img src="http://localhost:5000/crop_feed/rgb_image_02?id=0" id="img2"></div>
+        <div class="frame"><img src="http://localhost:5000/crop_feed/rgb_image_03?id=0" id="img3"></div>
+    </div>
+
+    <script>
+        // Refresh interval in milliseconds (e.g., 60000 milliseconds = 1 minute)
+        var refreshInterval = 200;
+        var idCounters = [0, 0, 0, 0]; // Initial ID counters for each image
+
+        function refreshImage(imageId, baseUrl, index) {
+            idCounters[index]++; // Increment the ID for the image
+            document.getElementById(imageId).src = baseUrl + "?id=" + idCounters[index];
+        }
+
+        function refreshImages() {
+            refreshImage('img1', 'http://localhost:5000/crop_feed/rgb_image_01', 1);
+            refreshImage('img2', 'http://localhost:5000/crop_feed/rgb_image_02', 2);
+            refreshImage('img3', 'http://localhost:5000/crop_feed/rgb_image_03', 3);
+        }
+
+        // Set the interval for refreshing images
+        setInterval(refreshImages, refreshInterval);
+    </script>
+</body>
+</html>
