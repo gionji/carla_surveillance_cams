@@ -17,7 +17,7 @@ MQTT_TOPIC_VISERCAM_SUBSCRIBE = "visercam/cmd"
 MQTT_TOPIC_VISERCAM_PUBLISH = "visercam/capture"
 MQTT_TOPIC_DETECT_PUBLISH = "detect"
 
-debug = True
+debug = False
 
 def on_message(client, userdata, message):
     if debug:
@@ -56,7 +56,7 @@ def on_log(client, userdata, level, buf):
 
 
 class MqttInterface:
-    def __init__(self, broker_address='localhost', port=1883, username='user', password='ssch', client_name="visersim"):
+    def __init__(self, broker_address='localhost', port=1883, username='user', password='ssch', client_name="visersim", q_size=10):
 
         self.broker_address = broker_address
         self.port = port
@@ -79,7 +79,7 @@ class MqttInterface:
         self.processMessage = False
         self.det = None
         self.youve_got_post = False
-        self.msg_queue = que.ImageQueue(max_size=30, name="detection message queue")
+        self.msg_queue = que.ImageQueue(max_size=q_size, name="detection message queue")
 
         thr = threading.Thread(target=self._checkMessage)
         thr.daemon = True
@@ -104,7 +104,7 @@ class MqttInterface:
                 if newMess:
                     newMess = False
                     #print("message received ", str(rxMess.payload.decode("utf-8")))
-                    print("message topic=", rxMess.topic)
+                    #print("message topic=", rxMess.topic)
                     #print("message qos=", rxMess.qos)
                     #print("message retain flag=", rxMess.retain)
                     data = json.loads(rxMess.payload.decode("utf-8"))
@@ -120,7 +120,8 @@ class MqttInterface:
                             self.activeDetection = False
 
                     elif "visercam/capture/" in rxMess.topic:
-                        self.msg_queue.push(rxMess)
+                        id = data["id"]
+                        self.msg_queue.push(id, rxMess)
 
             time.sleep(0.1)
 

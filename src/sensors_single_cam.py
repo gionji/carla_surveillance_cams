@@ -570,7 +570,7 @@ def generate_cropouts(crop_data, crops_que, rgb_data, segmentation_data, w, h, i
             crop = CropObject(image=cropped, metadata=objs[name], id=id[i])
             if cropped.shape != (400, 400, 3):
                 print(f"crop shape: {cropped.shape}")
-            crops_que[name].push(crop)
+            crops_que[name].push(id[i], crop)
             crop_data[name] = cropped
             crop_data[f'{name}_meta'] = objs[name]
             id[i] += 1
