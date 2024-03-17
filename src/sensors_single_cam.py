@@ -1061,7 +1061,7 @@ if __name__ == '__main__':
     #crops_que = [ImageQueue(max_size=4) for _ in range(len(sensor_transforms))]
     rgb_data = {f'rgb_image_{i + 1:02}': np.zeros((height, width, 4)) for i in range(len(sensor_transforms))}
     crop_data = {f'rgb_image_{i + 1:02}': np.zeros((crop_h, crop_w, 3)) for i in range(len(sensor_transforms))}
-    crops_que = {f'rgb_image_{i + 1:02}': ImageQueue(max_size=6, name=f'crop_{i + 1:02}') for i in range(len(sensor_transforms))}
+    crops_que = {f'rgb_image_{i + 1:02}': ImageQueue(max_size=100, name=f'crop_{i + 1:02}') for i in range(len(sensor_transforms))}
 
 
     setup_flask(rgb_data, crop_data, crop_w, crop_h, crops_que)
