@@ -19,6 +19,9 @@ import glob
 import os
 import pdb
 import sys
+
+import flask
+
 from src import mqtt, rest, objects
 from hemligt import *
 
@@ -958,6 +961,7 @@ def setup_mqtt():
 
 from flask import request
 from flask_cors import CORS
+from io import BytesIO
 
 def     setup_flask(sensor_data, crops_data, crop_w, crop_h, crops_que):
     # Initialize Flask app
@@ -1018,6 +1022,7 @@ def     setup_flask(sensor_data, crops_data, crop_w, crop_h, crops_que):
         def generate():
 
             crop_obj = crops_que[sensor_key].pop(crop_id)
+            print(f"sensor_key = {sensor_key}, crop id = {crop_id}")
             if crop_obj is not None:
                 img = crop_obj.image
                 width = img.shape[0]
@@ -1027,14 +1032,17 @@ def     setup_flask(sensor_data, crops_data, crop_w, crop_h, crops_que):
                 saved_crop = crop_transform(img, width, height, channels) #, crop_id)
 
                 ret, buffer = cv2.imencode('.jpg', saved_crop)
-                image_data = buffer.tobytes()
-                # Yield the image data as a stream
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + image_data + b'\r\n')
+                if ret:
+                    io_buf = BytesIO(buffer.tobytes())
+                    io_buf.seek(0)  # Go to the beginning of the BytesIO buffer
+                    return flask.send_file(io_buf, mimetype='image/jpeg', as_attachment=True,
+                                     download_name=f"{sensor_key}_{crop_id}.jpg")
+                else:
+                    return Response("Error processing image", status=500)
             else:
-                yield b'Sensor key not found'
+                return Response("Sensor key not found or invalid crop ID", status=404)
 
-        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        return generate()
 
     # Start Flask app in a separate thread
     import threading

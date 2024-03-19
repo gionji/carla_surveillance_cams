@@ -1,5 +1,6 @@
 import datetime
 import glob
+import json
 import os
 import sys
 import random
@@ -25,6 +26,27 @@ drones_blueprint_array = [
     'static.prop.drone_450',
     'static.prop.drone_x500'
 ]
+
+
+import time
+import paho.mqtt.client as mqtt
+
+# MQTT interface for each spawned object that we move around
+
+# The callback for when the client receives a CONNACK response from the server.
+def on_connect(client, userdata, flags, rc):
+    print("Connected with result code "+str(rc))
+
+    if rc == 0:
+        client.connected_flag = True  # set flag
+        print("connected OK")
+    else:
+        print("Bad connection Returned code=", rc)
+        client.bad_connection_flag = True
+
+    # After connecting, start a new thread that will handle the network loop
+    #client.loop_start()
+
 
 # Define three alternative trajectory functions
 def linear_trajectory(start_transform, end_transform, step, n_steps):
@@ -80,7 +102,6 @@ def circular_trajectory(start_transform, end_transform, step, n_steps):
     return new_location
 
 
-
 class DroneThread(threading.Thread):
     def __init__(self, world, start_transform, end_transform, trajectory_function=linear_trajectory):
         threading.Thread.__init__(self)
@@ -88,6 +109,36 @@ class DroneThread(threading.Thread):
         self.start_transform = start_transform
         self.end_transform = end_transform
         self.trajectory_function = trajectory_function
+        self.objects_list = []
+        self.sendDronePos = True
+        self.client = mqtt.Client()
+        self.client.on_connect = on_connect
+        self.id = None
+
+    def setup_mqtt(self):
+        # Setup MQTT client and callbacks
+        broker_address = "localhost"
+        broker_port = 1883
+
+        self.id = self.objects_list[0].id
+        self.client = mqtt.Client(client_id=f'drone_id_{self.id}')
+        self.client.connect(host=broker_address, port=broker_port)
+        print(f'connecting with client drone_id_{self.id}')
+        self.client.loop_start()
+
+    def send_msg(self, datetime, position):
+
+        result = {
+        "time": datetime,
+        "bp": self.objects_list[0].type_id,
+        "id": self.id,
+        "x": position.x,
+        "y": position.y,
+        "z": position.z
+
+        }
+        self.client.publish(f'viser_vehicle/drone_{self.id}', json.dumps(result))
+
 
     def run(self):
         try:
@@ -96,7 +147,7 @@ class DroneThread(threading.Thread):
             print("Error while flying drone:", e)
 
     def fly_drone(self):
-        objects_list = []
+
         try:
             # The world contains the list blueprints that we can use for adding new
             # actors into the simulation.
@@ -108,15 +159,25 @@ class DroneThread(threading.Thread):
 
             # Spawn the object at the starting transform
             vehicle = self.world.spawn_actor(bp, self.start_transform)
-            objects_list.append(vehicle)
+            self.objects_list.append(vehicle)
+
+            self.setup_mqtt()
 
             # Calculate the step size for each component
             n_steps = 200
             m_time = 20.0
-
+            pos_update_divider = 10
             # Move the object to the ending transform in n steps using the specified trajectory function
+            posupdate = 0
             for step in range(n_steps):
                 new_location = self.trajectory_function(self.start_transform, self.end_transform, step, n_steps)
+                posupdate +=1
+                if self.sendDronePos and posupdate == pos_update_divider:
+                    posupdate = 0
+                    current_time = datetime.datetime.now()
+                    date_time = current_time.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    self.send_msg(datetime=date_time, position=new_location)
+
 
                 # Set the new transform
                 vehicle.set_transform(carla.Transform(new_location, self.start_transform.rotation))
@@ -127,7 +188,7 @@ class DroneThread(threading.Thread):
             print(e)
         finally:
             print('destroying actors')
-            for obj in objects_list:
+            for obj in self.objects_list:
                 obj.destroy()
             print('done.')
 
