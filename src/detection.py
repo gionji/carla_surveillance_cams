@@ -11,40 +11,42 @@ import cv2
 import numpy as np
 import cv2
 
-def fetch_streamed_image(url):
+def fetch_image_from(base_url, sensor, id):
     """
-    Fetch the first image from a multipart HTTP stream.
-
     Parameters:
     - url: The URL from which to fetch the streamed image.
 
     Returns:
-    - A numpy array representing the image if successful, None otherwise.
+    - An image as a numpy array if successful, None otherwise.
     """
-    response = requests.get(url, stream=True)
 
+    url = f"{base_url}/{sensor}"
+    params = {'id': id}
+    print(f"sensor_name = {sensor}, id = {id}, url: {url}")
+
+    response = requests.get(url, params=params)
     if response.status_code == 200:
-        bytes_data = bytes()
-        for chunk in response.iter_content(chunk_size=1024):
-            bytes_data += chunk
-            # Check if the end of one part of the stream is reached
-            end_of_frame = bytes_data.find(b'\r\n\r\n') + 4
-            if end_of_frame != -1:
-                content_type_index = bytes_data.find(b'Content-Type: image/jpeg\r\n\r\n')
-                if content_type_index != -1:
-                    # Extract the JPEG image data
-                    jpeg_data = bytes_data[content_type_index + len(b'Content-Type: image/jpeg\r\n\r\n'):end_of_frame - 4]
-                    image_array = np.frombuffer(jpeg_data, dtype=np.uint8)
-                    img = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-                    return img
-                break
-    return None
+        # Convert the response content into a NumPy array
+        img_array = np.asarray(bytearray(response.content), dtype=np.uint8)
+
+        # Decode the array into an image
+        image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        return image
+    else:
+        print("Failed to fetch the image. Status code:", response.status_code)
+        return None
+
 
 # Function to process the received message
 def process_messages(mq):
     #if first:
 
     #    first = False
+    while mq.msg_queue.is_empty():
+        time.sleep(0.1)
+
+    time.sleep(1)
+
     while not mq.msg_queue.is_empty():
         try:
             #print("in!")
@@ -56,31 +58,25 @@ def process_messages(mq):
             image_id = data["id"]
 
             # Construct URL for image request
-            url = f"http://localhost:5000/crop_feed/{sensor_name}?id={image_id}"
+            #url = f"http://localhost:5000/crop_feed/{sensor_name}?id={image_id}"
+            #print(f"sensor_name = {sensor_name}, id = {image_id}, url: {url}")
 
 
-            print(f"sensor_name = {sensor_name}, id = {image_id}, url: {url}")
-            # Send HTTP request to get the image
-            img = fetch_streamed_image(url=url)
-            if img is None:
-                print(f"Skipped image id {image_id}")
-                continue
-            # if response.status_code == 200:
-            #     # Process the received image (dummy function)
-            #     if response.content == b'Sensor key not found':
-            #         print(f"skipping msg w id {image_id}")
-            #         continue
-            objects_detected = process_image(img)
+            image = fetch_image_from(base_url="http://localhost:5000/crop_feed", sensor=sensor_name, id=image_id)
+            if image is not None:
 
-            # Prepare data for publishing
-            result = {
-                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
-                "ID": image_id,
-                "objects_detected": objects_detected
-            }
+                # Send HTTP request to get the image
+                objects_detected = process_image(image)
 
-            # Publish result to MQTT topic
-            mq.publish_detection_result(topic=f"viserdetect/{sensor_name}/", detection_result=result)
+                # Prepare data for publishing
+                result = {
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
+                    "ID": image_id,
+                    "objects_detected": objects_detected
+                }
+
+                # Publish result to MQTT topic
+                mq.publish_detection_result(topic=f"viserdetect/{sensor_name}/", detection_result=result)
 
         except Exception as e:
             print(f"Error processing message: {e}")
