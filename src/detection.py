@@ -11,6 +11,10 @@ import cv2
 import numpy as np
 import cv2
 
+
+from ultralytics import YOLO
+
+
 def fetch_image_from(base_url, sensor, id):
     """
     Parameters:
@@ -61,7 +65,6 @@ def process_messages(mq):
             #url = f"http://localhost:5000/crop_feed/{sensor_name}?id={image_id}"
             #print(f"sensor_name = {sensor_name}, id = {image_id}, url: {url}")
 
-
             image = fetch_image_from(base_url="http://localhost:5000/crop_feed", sensor=sensor_name, id=image_id)
             if image is not None:
 
@@ -82,14 +85,18 @@ def process_messages(mq):
             print(f"Error processing message: {e}")
 
 
+
+## https://docs.ultralytics.com/usage/python/#predict
 # Function to process the received image (dummy function)
 def process_image(image):
     cv2.imshow(f"Crop from sensor", image)
     cv2.waitKey(10)
     # Your image processing logic here
     # This is a dummy function returning a list of detected objects
-    return ["object1", "object2", "object3"]
 
+    results = model.predict(source=image, save=True, save_txt=True)  # save predictions as labels
+
+    return results
 
 # MQTT settings
 
@@ -115,6 +122,9 @@ def setup_mqtt():
 
 if __name__ == '__main__':
     mq = setup_mqtt()
+
+    # Load a pretrained YOLO model (recommended for training)
+    model = YOLO('yolov8n.pt')
 
     first = True
 
