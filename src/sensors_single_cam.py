@@ -19,6 +19,7 @@ import glob
 import os
 import pdb
 import sys
+import time
 
 import flask
 
@@ -821,7 +822,7 @@ def main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, f
                 # print(f"img id = {image_id}") #crop_data['rgb_image_01'][0:5, 1, :])
                 #crops_que['rgb_image_01'].inspect()
                 #image_id += 1
-
+                time.sleep(0.5)
                 signal_img_captured(mq, date_time, crop_data, image_id)
             #print('after')
 
