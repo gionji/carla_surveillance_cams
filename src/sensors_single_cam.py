@@ -258,6 +258,8 @@ def spawn_camera(world, blueprint_library, reference_actor_bp, transform, sensor
     # Set up camera blueprint
     camera_bp = blueprint_library.find(sensor_type)
     camera_bp.set_attribute('fov', fov_str)
+    camera_bp.set_attribute('image_size_x', '1920')
+    camera_bp.set_attribute('image_size_y', '1080')
     
     # Spawn camera attached to anchor object
     camera = world.spawn_actor(
@@ -677,7 +679,7 @@ def kill_all_drones(world, client, filter="*drone*"):
 def main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, fov_degrees, crop_w, crop_h):
     objects_list = []
 
-    filename = './cameras.transforms'
+
 
 
     try:
@@ -689,12 +691,18 @@ def main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, f
 
         # Once we have a client we can retrieve the world that is currently
         # running.
+
         map_index = 3
         available_maps = ["Town01", "Town02", "Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
         world = client.get_world()
 
+        print(client.get_available_maps())
+
         map_name = available_maps[map_index]
+        #map_name = "Granso_slott_1_5km-buildify-trees"
+        map_name = "Vasteras_GoogleEarth_01"
         print(f"Loading map {map_index}: {map_name}")
+        filename = f'{map_name}_cameras.transforms'
         client.load_world(map_name)
 
         # The world contains the list blueprints that we can use for adding new
@@ -822,7 +830,7 @@ def main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, f
                 # print(f"img id = {image_id}") #crop_data['rgb_image_01'][0:5, 1, :])
                 #crops_que['rgb_image_01'].inspect()
                 #image_id += 1
-                time.sleep(0.5)
+                time.sleep(1.5)
                 signal_img_captured(mq, date_time, crop_data, image_id)
             #print('after')
 
@@ -881,6 +889,11 @@ def main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, f
                     #     camera_transforms = load_camera_positions(filename)
                     #     print( camera_transforms )
 
+                    elif event.key == pygame.K_f:
+                        # flush crop queues
+                        for k in crops_que.keys():
+                            crops_que[k].flush()
+
                     elif event.key == pygame.K_l:
                         camera_transforms = load_camera_positions(filename)
 
@@ -900,6 +913,9 @@ def main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, f
 
                         print( 'Loaded cameras positions from file ', filename)
 
+                    elif event.key == pygame.K_m:
+                        map_name = "Granso_slott_1_5km-buildify-trees"
+                        client.load_world(map_name)
                     elif event.key == pygame.K_o:
                         opt = not opt
                     elif event.key == pygame.K_d:
@@ -924,7 +940,7 @@ def main(mq, rgb_data, crop_data, crops_que, sensor_transforms, width, height, f
                                                   y=spectator_transform.location.y+25,
                                                   z=spectator_transform.location.z+25 )
 
-                        simulation_thread = MultiDroneSimulation(world, num_drones=5, min_values=min_values, max_values=max_values)
+                        simulation_thread = MultiDroneSimulation(world, num_drones=3, min_values=spectator_transform.location, max_values=max_values)
                         # Run the simulation
                         # Start the simulation thread
                         simulation_thread.start()

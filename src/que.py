@@ -87,6 +87,11 @@ class ImageQueue:
                 ret.append(item)
 
         return ret
+
+    def flush(self):
+        with self.lock:
+            self.queue.clear()  # Remove all items from the queue
+            self.id_to_index.clear()  # Reset ID-to-index mapping
     def __len__(self):
         with self.lock:
             return len(self.queue)
