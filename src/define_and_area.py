@@ -1,3 +1,7 @@
+import os
+import time
+
+import cv2
 import pygame
 import carla
 import numpy as np
@@ -153,7 +157,7 @@ def extract_grid_transforms(N, M):
     for i in range(0,8):
         center.x += saved_edges[i].x/8
         center.y += saved_edges[i].y/8
-        center.z += saved_edges[i].z/8
+        center.z = 10.0
     
     # Calculate the grid points on the middle plane perpendicular to the ground
     # We assume the grid is on the XY plane at z = center.z
@@ -172,7 +176,7 @@ def extract_grid_transforms(N, M):
     # Print grid points (for demonstration purposes)
     for idx, point in enumerate(grid_points):
         print(f"Grid Point {idx + 1}: x={point.x}, y={point.y}, z={point.z}")
-        world.debug.draw_point(point, size=0.1, color=carla.Color(255, 0, 0), life_time=5.0)
+        world.debug.draw_point(point, size=1.1, color=carla.Color(255, 0, 0), life_time=5.0)
 
     return grid_points
 
@@ -225,8 +229,81 @@ width_slider = Slider(50, display_height - 80, slider_width, 1, 200)
 length_slider = Slider(300, display_height - 80, slider_width, 1, 200)
 height_slider = Slider(550, display_height - 80, slider_width, 1, 200)
 
+width_grid_slider = Slider(50, display_height - 40, slider_width, 1, 20)
+length_grid_slider = Slider(300, display_height - 40, slider_width, 1, 20)
+height_grid_slider = Slider(550, display_height - 40, slider_width, 1, 20)
+
+
+def load_spectator_position(filename):
+    transforms = []
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith("width:"):
+                width = float(lines[i].split(":")[1].strip())
+                i += 1
+            if lines[i].startswith("length:"):
+                length = float(lines[i].split(":")[1].strip())
+                i += 1
+            if lines[i].startswith("height:"):
+                height = float(lines[i].split(":")[1].strip())
+                i += 1
+
+            if lines[i].startswith("Spectator:"):
+                obj_id = int(lines[i].split(":")[1].strip())
+                pos_line = lines[i + 1].split(":")[1].strip().replace('(', '').replace(')', '').split(',')
+                position = carla.Location(float(pos_line[0]), float(pos_line[1]), float(pos_line[2]))
+                rot_line = lines[i + 2].split(":")[1].strip().replace('(', '').replace(')', '').split(',')
+                rotation = carla.Rotation(float(rot_line[0]), float(rot_line[1]), float(rot_line[2]))
+                transform = carla.Transform(position, rotation)
+                i += 3
+            i+=1
+
+
+    return width, length, height, transform
+
+def save_spectator_position(filename, spectator, width, length, height):
+    with open(filename, 'w') as f:
+
+        f.write(f"width: {width}\n")
+        f.write(f"length: {length}\n")
+        f.write(f"height: {height}\n")
+        transform = spectator.get_transform()
+        position = transform.location
+        rotation = transform.rotation
+        f.write(f"Spectator: {spectator.id}\n")
+        f.write(f"Position: ({position.x}, {position.y}, {position.z})\n")
+        f.write(f"Rotation: ({rotation.pitch}, {rotation.yaw}, {rotation.roll})\n")
+        f.write("\n")
+
+
+def save_image_and_annotation(image, filename, destination_folder, location, rotation):
+    # Ensure the destination folder exists
+    time.sleep(0.5)
+    os.makedirs(destination_folder, exist_ok=True)
+
+    # Create the full path for the image file
+    image_path = os.path.join(destination_folder, f"{filename}.png")
+
+    # Save the image using OpenCV
+    cv2.imwrite(image_path, image)
+
+    # Create the full path for the annotation file
+    annotation_path = os.path.join(destination_folder, f"{filename}.txt")
+
+    # Write the location and rotation data to the file
+    with open(annotation_path, 'w') as f:
+        f.write(f"Location: {location}\n")
+        f.write(f"Rotation: {rotation}\n")
+
+
+
 try:
     # Main loop
+
+    output_folder = f"images"
+    file_name = "spectator.txt"
     running = True
     while running:
         events = pygame.event.get()
@@ -238,15 +315,33 @@ try:
 
         if keys[pygame.K_r]:
             trashbin.set_transform(initial_transform)
-        elif keys[pygame.K_g]:
-            save_trashbin_transform(trashbin)
+        elif keys[pygame.K_l]:
+            width, length, height, transform = load_spectator_position(filename=file_name)
+            trashbin.set_transform(transform)
+            width_slider.val, length_slider.val, height_slider.val = width, length, height
+
+        elif keys[pygame.K_o]:
+            #save_trashbin_transform(trashbin)
+            save_spectator_position(filename=file_name, spectator=trashbin, width=width_slider.val, length=length_slider.val, height=height_slider.val)
+
         elif keys[pygame.K_b]:
             save_box_edges(trashbin, width_slider.val, length_slider.val, height_slider.val)
         elif keys[pygame.K_v]:
             draw_box_edges(world, trashbin, width_slider.val, length_slider.val, height_slider.val, lifetime=5.0)
         elif keys[pygame.K_y]:
             if saved_box_edges != None:
-                extract_grid_transforms(N=4, M=5)
+                gridpoints = extract_grid_transforms(N=int(width_grid_slider.val), M=int(length_grid_slider.val))
+                rotations = [carla.Rotation(yaw=0, pitch=-90, roll=0)]
+                for y in [0, 90, 180, 270]:
+                    rotations.append(carla.Rotation(yaw=y, pitch=-45, roll=0))
+                for y in [0, 90, 180, 270]:
+                    rotations.append(carla.Rotation(yaw=y, pitch=-30, roll=0))
+
+                for i, gp in enumerate(gridpoints):
+                    for j, rot in enumerate(rotations):
+                        trashbin.set_transform(carla.Transform(gp, rot))
+                        save_image_and_annotation(image=image, filename=f"gp_{i}_pose_{j}", destination_folder=output_folder, location=gp, rotation=rot)
+
         else:
             move_trashbin(trashbin, keys, clock.get_time() / 1000.0)
 
@@ -262,6 +357,13 @@ try:
         length_slider.draw(display)
         height_slider.draw(display)
 
+        width_grid_slider.update(events)
+        length_grid_slider.update(events)
+        height_grid_slider.update(events)
+        width_grid_slider.draw(display)
+        length_grid_slider.draw(display)
+        height_grid_slider.draw(display)
+
         # Draw labels for sliders
         font = pygame.font.Font(None, 36)
         width_label = font.render(f"Width: {int(width_slider.val)}", True, (255, 255, 255))
@@ -270,6 +372,11 @@ try:
         display.blit(width_label, (50, display_height - 110))
         display.blit(length_label, (300, display_height - 110))
         display.blit(height_label, (550, display_height - 110))
+        width_grid_label = font.render(f"width grid: {int(width_grid_slider.val)}", True, (255, 255, 255))
+        length_grid_label = font.render(f"length grid: {int(length_grid_slider.val)}", True, (255, 255, 255))
+        #height_grid_label = font.render(f"Height: {int(height_grid_slider.val)}", True, (255, 255, 255))
+        display.blit(width_grid_label, (50, display_height - 50))
+        display.blit(length_grid_label, (300, display_height - 50))
 
         pygame.display.flip()
         clock.tick(30)
