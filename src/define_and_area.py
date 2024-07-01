@@ -1,3 +1,4 @@
+import json
 import os
 import time
 
@@ -7,12 +8,14 @@ import carla
 import numpy as np
 import math
 
+from tqdm import tqdm
+
 # Initialize Pygame
 pygame.init()
 
 # Set up display
-display_width = 800
-display_height = 600
+display_width = 1850
+display_height = 1000
 display = pygame.display.set_mode((display_width, display_height))
 pygame.display.set_caption("CARLA Spectator View")
 
@@ -22,6 +25,10 @@ clock = pygame.time.Clock()
 client = carla.Client('localhost', 2000)
 client.set_timeout(10.0)
 world = client.get_world()
+map_index = 3
+available_maps = ["Town01", "Town02", "Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
+map_name = available_maps[map_index]
+client.load_world(map_name)
 
 # Spawn the trashbin
 blueprint_library = world.get_blueprint_library()
@@ -94,20 +101,20 @@ def compute_box_edges(transform, width, length, height):
     # Compute the eight corners of the box
     corners = [
         carla.Location(x=-width/2, y=-length/2, z=-height/2),
-        carla.Location(x=width/2, y=-length/2, z=-height/2),
-        carla.Location(x=-width/2, y=length/2, z=-height/2),
-        carla.Location(x=width/2, y=length/2, z=-height/2),
+        carla.Location(x=width/2,  y=-length/2, z=-height/2),
+        carla.Location(x=-width/2, y=length/2,  z=-height/2),
+        carla.Location(x=width/2,  y=length/2,  z=-height/2),
         carla.Location(x=-width/2, y=-length/2, z=height/2),
-        carla.Location(x=width/2, y=-length/2, z=height/2),
-        carla.Location(x=-width/2, y=length/2, z=height/2),
-        carla.Location(x=width/2, y=length/2, z=height/2),
+        carla.Location(x=width/2,  y=-length/2, z=height/2),
+        carla.Location(x=-width/2, y=length/2,  z=height/2),
+        carla.Location(x=width/2,  y=length/2,  z=height/2),
     ]
 
     if saved_transform != None:
         transform = saved_transform 
 
     # Apply the transform to the corners
-    box_edges = [transform.transform(corner) for corner in corners]
+    box_edges = [carla.Location(transform.location.x + corner.x, transform.location.y + corner.y, transform.location.z + corner.z) for corner in corners]
     
     return box_edges
 
@@ -116,12 +123,13 @@ saved_box_edges = None
 
 def save_box_edges(trashbin, width, length, height):
     global saved_box_edges
-    transform = trashbin.get_transform()
+    time.sleep(0.2)
+    transform = trashbin#.get_transform()
     edges = compute_box_edges(transform, width, length, height)
     saved_box_edges = edges
     for i, edge in enumerate(edges):
-        print(f"Edge {i+1}: x={edge.x}, y={edge.y}, z={edge.z}")
-
+        print(f"Edge {i+1}: x={edge.x:.1f}, y={edge.y:.1f}, z={edge.z:.1f}")
+    print("Done.")
 def draw_box_edges(world, trashbin, width, length, height, lifetime=0.1):
     transform = trashbin.get_transform()
     edges = compute_box_edges(transform, width, length, height)
@@ -136,15 +144,24 @@ def draw_box_edges(world, trashbin, width, length, height, lifetime=0.1):
     # Draw lines between the edges to form the box
     connections = [
         (0, 1), (1, 3), (3, 2), (2, 0),  # Bottom face
-        (4, 5), (5, 7), (7, 6), (6, 4),  # Top face
-        (0, 4), (1, 5), (2, 6), (3, 7)   # Vertical lines
+        (4, 5), (5, 7), (7, 6), (6, 4)#,  # Top face
+        #(0, 4), (1, 5), (2, 6), (3, 7)   # Vertical lines
     ]
     
     for start, end in connections:
         world.debug.draw_line(edges[start], edges[end], color=carla.Color(0, 255, 0), life_time=lifetime)
 
+    connections = [
+        #(0, 1), (1, 3), (3, 2), (2, 0),  # Bottom face
+        #(4, 5), (5, 7), (7, 6), (6, 4),  # Top face
+        (0, 4), (1, 5), (2, 6), (3, 7)  # Vertical lines
+    ]
 
-def extract_grid_transforms(N, M):
+    for start, end in connections:
+        world.debug.draw_line(edges[start], edges[end], color=carla.Color(255, 0, 0), life_time=lifetime)
+
+
+def extract_grid_transforms(N, M, K=1):
     # Calculate the center of the box
     saved_edges = None
 
@@ -153,32 +170,35 @@ def extract_grid_transforms(N, M):
     else: 
         return
 
-    center = carla.Location()
+    center = carla.Location(x=0, y=0, z=0)
     for i in range(0,8):
         center.x += saved_edges[i].x/8
         center.y += saved_edges[i].y/8
-        center.z = 10.0
+        center.z += saved_edges[i].z/8
     
     # Calculate the grid points on the middle plane perpendicular to the ground
     # We assume the grid is on the XY plane at z = center.z
     grid_points = []
+    grid_pos = []
     for i in range(N):
         for j in range(M):
-            # Calculate relative positions
-            x_rel = ((i + 0.5) / N - 0.5) * width_slider.val
-            y_rel = ((j + 0.5) / M - 0.5) * length_slider.val
-            z_rel = 0  # Plane is at z = 0 relative to center
+            for k in range(K):
+                # Calculate relative positions
+                x_rel = ((i + 0.5) / N - 0.5) * width_slider.val
+                y_rel = ((j + 0.5) / M - 0.5) * length_slider.val
+                z_rel = ((k + 0.5) / K - 0.5) * height_slider.val # Plane is at z = 0 relative to center
 
-            # Calculate absolute positions
-            grid_point = center + carla.Location(x_rel, y_rel, z_rel)
-            grid_points.append(grid_point)
+                # Calculate absolute positions
+                grid_point = center + carla.Location(x_rel, y_rel, z_rel)
+                grid_points.append(grid_point)
+                grid_pos.append({"x": center.x+x_rel, "y": center.y+y_rel, "z": center.z+z_rel})
 
     # Print grid points (for demonstration purposes)
-    for idx, point in enumerate(grid_points):
-        print(f"Grid Point {idx + 1}: x={point.x}, y={point.y}, z={point.z}")
-        world.debug.draw_point(point, size=1.1, color=carla.Color(255, 0, 0), life_time=5.0)
+    #for idx, point in enumerate(grid_points):
+    #    print(f"Grid Point {idx + 1}: x={point.x}, y={point.y}, z={point.z}")
+    #    world.debug.draw_point(point, size=1.1, color=carla.Color(255, 0, 0), life_time=5.0)
 
-    return grid_points
+    return grid_points, grid_pos
 
 
 
@@ -199,11 +219,11 @@ slider_width = 200
 slider_height = 20
 
 class Slider:
-    def __init__(self, x, y, w, min_val, max_val):
+    def __init__(self, x, y, w, min_val, max_val, val=None):
         self.rect = pygame.Rect(x, y, w, slider_height)
         self.min_val = min_val
         self.max_val = max_val
-        self.val = min_val
+        self.val = val if val is not None else min_val
         self.active = False
 
     def draw(self, win):
@@ -229,14 +249,14 @@ width_slider = Slider(50, display_height - 80, slider_width, 1, 200)
 length_slider = Slider(300, display_height - 80, slider_width, 1, 200)
 height_slider = Slider(550, display_height - 80, slider_width, 1, 200)
 
-width_grid_slider = Slider(50, display_height - 40, slider_width, 1, 20)
-length_grid_slider = Slider(300, display_height - 40, slider_width, 1, 20)
-height_grid_slider = Slider(550, display_height - 40, slider_width, 1, 20)
+width_grid_slider = Slider(50, display_height - 40, slider_width, 1, 20, val=4)
+length_grid_slider = Slider(300, display_height - 40, slider_width, 1, 20, val=4)
+height_grid_slider = Slider(550, display_height - 40, slider_width, 1, 20, val=2)
 
 
-def load_spectator_position(filename):
+def load_spectator_position(folder, filename):
     transforms = []
-    with open(filename, 'r') as f:
+    with open(os.path.join(folder, filename), 'r') as f:
         lines = f.readlines()
         i = 0
         while i < len(lines):
@@ -263,8 +283,8 @@ def load_spectator_position(filename):
 
     return width, length, height, transform
 
-def save_spectator_position(filename, spectator, width, length, height):
-    with open(filename, 'w') as f:
+def save_spectator_position(folder, filename, spectator, width, length, height):
+    with open(os.path.join(folder, filename), 'w') as f:
 
         f.write(f"width: {width}\n")
         f.write(f"length: {length}\n")
@@ -298,12 +318,43 @@ def save_image_and_annotation(image, filename, destination_folder, location, rot
         f.write(f"Rotation: {rotation}\n")
 
 
+def save_image_and_pose(image, filename, destination_folder, pose):
+    # Ensure the destination folder exists
+    time.sleep(0.5)
+    os.makedirs(destination_folder, exist_ok=True)
+
+    # Create the full path for the image file
+    image_path = os.path.join(destination_folder, f"{filename}.png")
+
+    # Save the image using OpenCV
+    cv2.imwrite(image_path, image)
+
+    # Create the full path for the annotation file
+    annotation_path = os.path.join(destination_folder, f"{filename}.txt")
+
+    # Write the location and rotation data to the file
+    with open(annotation_path, 'w') as f:
+        json.dump(pose, f, indent=4, default=vars)
+
+
+def generate_poses(gpt, gridpoints, rt, rotations):
+    poses = []
+    for i, gp in enumerate(gridpoints):
+        for j, rot in enumerate(rotations):
+            fwd = rt[j].get_forward_vector()
+
+            p = {"pos": gp, "rot": rot, "normal": [fwd.x, fwd.y, fwd.z]}
+            poses.append(p)
+    return poses
 
 try:
     # Main loop
-
-    output_folder = f"images"
+    experiment_name = "test_normal"
+    data_folder = "/home/joakim/data/nerf_data"
+    output_folder = os.path.join(data_folder, experiment_name)
+    images_folder = os.path.join(output_folder, "images")
     file_name = "spectator.txt"
+    pose_file_name = "camera_poses.txt"
     running = True
     while running:
         events = pygame.event.get()
@@ -316,31 +367,51 @@ try:
         if keys[pygame.K_r]:
             trashbin.set_transform(initial_transform)
         elif keys[pygame.K_l]:
-            width, length, height, transform = load_spectator_position(filename=file_name)
+            width, length, height, transform = load_spectator_position(folder=output_folder, filename=file_name)
             trashbin.set_transform(transform)
+            saved_transform = transform
             width_slider.val, length_slider.val, height_slider.val = width, length, height
 
         elif keys[pygame.K_o]:
             #save_trashbin_transform(trashbin)
-            save_spectator_position(filename=file_name, spectator=trashbin, width=width_slider.val, length=length_slider.val, height=height_slider.val)
+            save_spectator_position(folder=output_folder, filename=file_name, spectator=trashbin, width=width_slider.val, length=length_slider.val, height=height_slider.val)
 
         elif keys[pygame.K_b]:
-            save_box_edges(trashbin, width_slider.val, length_slider.val, height_slider.val)
+            save_box_edges(saved_transform, width_slider.val, length_slider.val, height_slider.val)
         elif keys[pygame.K_v]:
             draw_box_edges(world, trashbin, width_slider.val, length_slider.val, height_slider.val, lifetime=5.0)
         elif keys[pygame.K_y]:
             if saved_box_edges != None:
-                gridpoints = extract_grid_transforms(N=int(width_grid_slider.val), M=int(length_grid_slider.val))
+                gridpoints, gridpos = extract_grid_transforms(N=int(width_grid_slider.val), M=int(length_grid_slider.val), K=int(height_grid_slider.val))
                 rotations = [carla.Rotation(yaw=0, pitch=-90, roll=0)]
-                for y in [0, 90, 180, 270]:
-                    rotations.append(carla.Rotation(yaw=y, pitch=-45, roll=0))
-                for y in [0, 90, 180, 270]:
-                    rotations.append(carla.Rotation(yaw=y, pitch=-30, roll=0))
+                rots = [{"roll": 0, "pitch": -90, "yaw": 0}]
 
-                for i, gp in enumerate(gridpoints):
-                    for j, rot in enumerate(rotations):
-                        trashbin.set_transform(carla.Transform(gp, rot))
-                        save_image_and_annotation(image=image, filename=f"gp_{i}_pose_{j}", destination_folder=output_folder, location=gp, rotation=rot)
+                # for y in [0, 90, 180, 270]:
+                #     rotations.append(carla.Rotation(yaw=y, pitch=-45, roll=0))
+                #     rots.append({"roll": 0, "pitch": -45, "yaw": y})
+                for y in [0, 45, 90, 135, 180, 225, 270, 315]:
+                    rotations.append(carla.Rotation(yaw=y, pitch=-30, roll=0))
+                    rots.append({"roll": 0, "pitch": -30, "yaw": y})
+
+                poses = generate_poses(gridpoints, gridpos, rotations, rots)
+                full_pose = os.path.join(output_folder, pose_file_name)
+                with open(full_pose, 'w') as outfile:
+                    json.dump({"poses": poses}, outfile, indent=4, default=vars)
+
+                f = open(full_pose)
+                json_data = json.load(f)
+                read_poses = json_data['poses']
+
+                l = len(read_poses)
+                #with tqdm(total=l) as pbar:
+
+                for i, pose in enumerate(tqdm(read_poses)):
+                    r = carla.Rotation(yaw=pose["rot"]["yaw"], pitch=pose["rot"]["pitch"], roll=pose["rot"]["roll"])
+                    pt = carla.Location(x=pose["pos"]["x"], y=pose["pos"]["y"], z=pose["pos"]["z"])
+                    trashbin.set_transform(carla.Transform(pt, r))
+                    save_image_and_pose(image=image, filename=f"pose_{i:05d}", destination_folder=images_folder, pose=pose)
+                    #print(f"Image {i} out of {l} saved.")
+                    #pbar.update(i)
 
         else:
             move_trashbin(trashbin, keys, clock.get_time() / 1000.0)
@@ -374,9 +445,16 @@ try:
         display.blit(height_label, (550, display_height - 110))
         width_grid_label = font.render(f"width grid: {int(width_grid_slider.val)}", True, (255, 255, 255))
         length_grid_label = font.render(f"length grid: {int(length_grid_slider.val)}", True, (255, 255, 255))
-        #height_grid_label = font.render(f"Height: {int(height_grid_slider.val)}", True, (255, 255, 255))
+        height_grid_label = font.render(f"Height grid: {int(height_grid_slider.val)}", True, (255, 255, 255))
         display.blit(width_grid_label, (50, display_height - 50))
         display.blit(length_grid_label, (300, display_height - 50))
+        display.blit(height_grid_label, (550, display_height - 50))
+
+        tf = trashbin.get_transform()
+        location = tf.location
+        rotation = tf.rotation
+        pose_label = font.render(f"x: {location.x:.1f}, y: {location.y:.1f}, z:{location.z:.1f}", True, (255, 255, 255))
+        display.blit(pose_label, (800, display_height - 50))
 
         pygame.display.flip()
         clock.tick(30)
