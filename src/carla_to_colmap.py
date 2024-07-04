@@ -163,7 +163,8 @@ def save_to_json(folder, output_file, frames):
 
 
 if __name__ == "__main__":
-    folder = "nerf_data/test_normal"
+    print(f"folder: {os.getcwd()}")
+    folder = "../nerf_data/test_normal"
     input_json = 'camera_poses.txt'  # Replace with your input JSON file path
     #rotation_output_txt = 'rotation_output.txt'  # Replace with your desired rotation matrices output file path
     #transform_output_txt = 'transform_output.txt'  # Replace with your desired homogeneous matrices output file path
