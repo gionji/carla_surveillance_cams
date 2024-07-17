@@ -43,7 +43,7 @@ camera_bp.set_attribute('image_size_y', str(display_height))
 camera_bp.set_attribute('fov', '110')
 
 # Attach the camera to the trashbin
-relative_transform = carla.Transform(carla.Location(x=0, y=0, z=-2))
+relative_transform = carla.Transform(carla.Location(x=0, y=0, z=0))
 camera = world.try_spawn_actor(camera_bp, relative_transform, attach_to=trashbin)
 
 # Trashbin control variables
@@ -190,7 +190,9 @@ def extract_grid_transforms(N, M, K=1):
 
                 # Calculate absolute positions
                 grid_point = center + carla.Location(x_rel, y_rel, z_rel)
-                grid_points.append(grid_point)
+                #grid_point.y = -grid_point.y # negate y axis to convert to right-handed system (used in NeRFstudio)
+                nerfstudio_grid_point = carla.Location(x=grid_point.y, y=-grid_point.z, z=grid_point.x)
+                grid_points.append(nerfstudio_grid_point)#grid_point)
                 grid_pos.append({"x": center.x+x_rel, "y": center.y+y_rel, "z": center.z+z_rel})
 
     # Print grid points (for demonstration purposes)
@@ -339,17 +341,49 @@ def save_image_and_pose(image, filename, destination_folder, pose):
 
 def generate_poses(gpt, gridpoints, rt, rotations):
     poses = []
+    x_rel, z_rel = 0.0, 0.0
     for i, gp in enumerate(gridpoints):
         for j, rot in enumerate(rotations):
             fwd = rt[j].get_forward_vector()
+            # gptz is only for test vectors, this will separate them in space
+            gptz = gpt[0] + carla.Location(x_rel, 0.0, z_rel)
+            gp["x"] = gptz.x # reflect whatever debug-change in pos above also in pos dict in camera_poses
+            gp["y"] = gptz.y
+            gp["z"] = gptz.z
+            gptz.y = -gptz.y  # invert the y axis to transform to right-handed system (external to Carla)
 
-            p = {"pos": gp, "rot": rot, "normal": [fwd.x, fwd.y, fwd.z]}
+            tf = carla.Transform(location=gptz, rotation=rt[j])
+            mtx = tf.get_matrix()
+
+            p = {"pos": gp, "rot": rot, "normal": [fwd.x, fwd.y, fwd.z], "matrix": mtx}
             poses.append(p)
+            z_rel += 1.0
+            x_rel += 5.0
     return poses
+
+def generate_poses_debug(gpt, gridpoints, rt, rotations):
+    int_poses = []
+    for i, (p, r) in enumerate(zip(gpt, rt)): # carla objects
+        fwd = r.get_forward_vector()
+
+        tf = carla.Transform(location=p, rotation=r)
+        mtx = tf.get_matrix()
+
+        po = {"pos": gridpoints[i], "rot": rotations[i], "normal": [fwd.x, fwd.y, fwd.z], "matrix": mtx}
+        int_poses.append(po)
+    return int_poses
+
+
+def gen_rotations(rots):
+    rotsCarla = []
+    for r in rots:
+        rotsCarla.append(carla.Rotation(yaw=r["yaw"], pitch=-r["pitch"], roll=-r["roll"]))
+    return rotsCarla, rots
+
 
 try:
     # Main loop
-    experiment_name = "test_normal"
+    experiment_name = "test_matrix"
     data_folder = "/home/joakim/data/nerf_data"
     output_folder = os.path.join(data_folder, experiment_name)
     images_folder = os.path.join(output_folder, "images")
@@ -382,18 +416,30 @@ try:
             draw_box_edges(world, trashbin, width_slider.val, length_slider.val, height_slider.val, lifetime=5.0)
         elif keys[pygame.K_y]:
             if saved_box_edges != None:
-                gridpoints, gridpos = extract_grid_transforms(N=int(width_grid_slider.val), M=int(length_grid_slider.val), K=int(height_grid_slider.val))
-                rotations = [carla.Rotation(yaw=0, pitch=-90, roll=0)]
-                rots = [{"roll": 0, "pitch": -90, "yaw": 0}]
+                #gridpoints, gridpos = extract_grid_transforms(N=int(width_grid_slider.val), M=int(length_grid_slider.val), K=int(height_grid_slider.val))
+
+                # this returns a single point in which we spawn our test vectors
+                locationObjects, gridpos = extract_grid_transforms(N=6, M=1, K=1)
+
+                #rotations = [carla.Rotation(yaw=0, pitch=-90, roll=0)]
+                #Test vectors to find out how they are mapped out in NeRFStudio
+                rots = [{"roll": 0, "pitch": 0, "yaw": 0},
+                        {"roll": 0, "pitch": 0, "yaw": 45},
+                        {"roll": 0, "pitch": 0, "yaw": 90},
+                        {"roll": 0, "pitch": 0, "yaw": 135},
+                        {"roll": 5, "pitch": 0, "yaw": 180},
+                        {"roll": 5, "pitch": 0, "yaw": 180}
+                        ]
+                rotationObjects, rots = gen_rotations(rots) # make sure we always define them in with the same conventions
 
                 # for y in [0, 90, 180, 270]:
                 #     rotations.append(carla.Rotation(yaw=y, pitch=-45, roll=0))
                 #     rots.append({"roll": 0, "pitch": -45, "yaw": y})
-                for y in [0, 45, 90, 135, 180, 225, 270, 315]:
-                    rotations.append(carla.Rotation(yaw=y, pitch=-30, roll=0))
-                    rots.append({"roll": 0, "pitch": -30, "yaw": y})
+                #for y in [0, 45, 90, 135, 180, 225, 270, 315]:
+                #    rotations.append(carla.Rotation(yaw=-y, pitch=-30, roll=0))
+                #    rots.append({"roll": 0, "pitch": -30, "yaw": y})
 
-                poses = generate_poses(gridpoints, gridpos, rotations, rots)
+                poses = generate_poses_debug(locationObjects, gridpos, rotationObjects, rots)
                 full_pose = os.path.join(output_folder, pose_file_name)
                 with open(full_pose, 'w') as outfile:
                     json.dump({"poses": poses}, outfile, indent=4, default=vars)
@@ -453,7 +499,7 @@ try:
         tf = trashbin.get_transform()
         location = tf.location
         rotation = tf.rotation
-        pose_label = font.render(f"x: {location.x:.1f}, y: {location.y:.1f}, z:{location.z:.1f}", True, (255, 255, 255))
+        pose_label = font.render(f"x: {location.x:.1f}, y: {location.y:.1f}, z:{location.z:.1f}, roll:{rotation.roll:.0f}, pitch:{rotation.pitch:.0f}, Yaw:{rotation.yaw:.0f}", True, (255, 255, 255))
         display.blit(pose_label, (800, display_height - 50))
 
         pygame.display.flip()

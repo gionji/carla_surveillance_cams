@@ -119,18 +119,19 @@ def convert_poses_to_colmap(folder, json_file):
 
     frames = []
 
-    for idx, pose in enumerate(data["poses"], start=1):
+    for idx, pose in enumerate(data["poses"]):
         pos = pose["pos"]
         roll = pose["rot"]["roll"]
         pitch = pose["rot"]["pitch"]
         yaw = pose["rot"]["yaw"]
         normal = pose["normal"]
+        mtx = pose["matrix"]
 
         # Get the rotation matrix
         rotation_matrix = euler_to_rotation_matrix(roll, pitch, yaw)
 
         # Get the homogeneous transformation matrix
-        homogeneous_matrix = create_homogeneous_matrix(pos, rotation_matrix)
+        homogeneous_matrix = mtx #create_homogeneous_matrix(pos, rotation_matrix)
 
         # Convert matrix to nested lists for JSON serialization
         transform_matrix_list = homogeneous_matrix.tolist()
@@ -182,7 +183,7 @@ if __name__ == "__main__":
     #print(f"Homogeneous transformation matrices saved to {transform_output_txt}")
 
 
-    output_json = 'camera_transforms.json'  # Replace with your desired output JSON file path
+    output_json = 'transforms.json'  # Replace with your desired output JSON file path
 
     # Convert poses to the required output format
     frames = convert_poses_to_colmap(folder, input_json)
