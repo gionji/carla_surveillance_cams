@@ -10,6 +10,11 @@ import math
 
 from tqdm import tqdm
 
+from drones_multiple_trajectories_02 import MultiDroneDataCollection
+
+from src.drones_multiple_trajectories_02 import DroneThread
+from src.utils import load_json_file
+
 # Initialize Pygame
 pygame.init()
 
@@ -18,6 +23,13 @@ display_width = 1850
 display_height = 1000
 display = pygame.display.set_mode((display_width, display_height))
 pygame.display.set_caption("CARLA Spectator View")
+
+colors = [carla.Color(0,230,255, 128),
+          carla.Color(0, 230, 0, 128),
+          carla.Color(100,115, 0,128),
+          carla.Color(230, 0, 230, 128)
+
+          ]
 
 clock = pygame.time.Clock()
 
@@ -130,6 +142,31 @@ def save_box_edges(trashbin, width, length, height):
     for i, edge in enumerate(edges):
         print(f"Edge {i+1}: x={edge.x:.1f}, y={edge.y:.1f}, z={edge.z:.1f}")
     print("Done.")
+
+
+def draw_plan(world, route, lifetime=0.1, color=carla.Color(255, 0, 0)):
+
+    print(f"Drawing route w color {color}")
+    # Draw points at each edge
+    locs = []
+    for i, pt in enumerate(route):
+
+        loc = carla.Location(pt["pos"]["x"], pt["pos"]["y"], pt["pos"]["z"])
+                               #carla.Rotation(roll=pt["rot"]["roll"], pitch=pt["rot"]["pitch"], yaw=pt["rot"]["yaw"]))
+        locs.append(loc)
+
+        if i == 0:
+            # start with red pt
+            world.debug.draw_point(loc, size=0.3, color=carla.Color(0, 0, 255), life_time=lifetime)
+        else:
+            world.debug.draw_point(loc, size=0.2, color=carla.Color(255, 0, 0), life_time=lifetime)
+
+    for i, pt in enumerate(locs):
+        if i < len(locs)-1:
+            world.debug.draw_line(locs[i], locs[i+1], color=color, life_time=lifetime)
+
+
+
 def draw_box_edges(world, trashbin, width, length, height, lifetime=0.1):
     transform = trashbin.get_transform()
     edges = compute_box_edges(transform, width, length, height)
@@ -272,6 +309,16 @@ def load_spectator_position(folder, filename):
                 height = float(lines[i].split(":")[1].strip())
                 i += 1
 
+            if lines[i].startswith("width_grid:"):
+                width_grid = int(lines[i].split(":")[1].strip())
+                i += 1
+            if lines[i].startswith("length_grid:"):
+                length_grid = int(lines[i].split(":")[1].strip())
+                i += 1
+            if lines[i].startswith("height_grid:"):
+                height_grid = int(lines[i].split(":")[1].strip())
+                i += 1
+
             if lines[i].startswith("Spectator:"):
                 obj_id = int(lines[i].split(":")[1].strip())
                 pos_line = lines[i + 1].split(":")[1].strip().replace('(', '').replace(')', '').split(',')
@@ -283,14 +330,17 @@ def load_spectator_position(folder, filename):
             i+=1
 
 
-    return width, length, height, transform
+    return width, length, height, width_grid, length_grid, height_grid, transform
 
-def save_spectator_position(folder, filename, spectator, width, length, height):
+def save_spectator_position(folder, filename, spectator, width, length, height, width_grid, length_grid, height_grid):
     with open(os.path.join(folder, filename), 'w') as f:
 
         f.write(f"width: {width}\n")
         f.write(f"length: {length}\n")
         f.write(f"height: {height}\n")
+        f.write(f"width_grid: {width_grid}\n")
+        f.write(f"length_grid: {length_grid}\n")
+        f.write(f"height_grid: {height_grid}\n")
         transform = spectator.get_transform()
         position = transform.location
         rotation = transform.rotation
@@ -322,7 +372,7 @@ def save_image_and_annotation(image, filename, destination_folder, location, rot
 
 def save_image_and_pose(image, filename, destination_folder, pose):
     # Ensure the destination folder exists
-    time.sleep(0.5)
+    time.sleep(0.4)
     os.makedirs(destination_folder, exist_ok=True)
 
     # Create the full path for the image file
@@ -341,24 +391,24 @@ def save_image_and_pose(image, filename, destination_folder, pose):
 
 def generate_poses(gpt, gridpoints, rt, rotations):
     poses = []
-    x_rel, z_rel = 0.0, 0.0
+
     for i, gp in enumerate(gridpoints):
         for j, rot in enumerate(rotations):
             fwd = rt[j].get_forward_vector()
             # gptz is only for test vectors, this will separate them in space
-            gptz = gpt[0] + carla.Location(x_rel, 0.0, z_rel)
-            gp["x"] = gptz.x # reflect whatever debug-change in pos above also in pos dict in camera_poses
-            gp["y"] = gptz.y
-            gp["z"] = gptz.z
-            gptz.y = -gptz.y  # invert the y axis to transform to right-handed system (external to Carla)
+            # gptz = gpt[0] + carla.Location(x_rel, 0.0, z_rel)
+            # gp["x"] = gptz.x # reflect whatever debug-change in pos above also in pos dict in camera_poses
+            # gp["y"] = gptz.y
+            # gp["z"] = gptz.z
+            # gptz.y = -gptz.y  # invert the y axis to transform to right-handed system (external to Carla)
+            carla_gp = carla.Location(x=gp["x"], y=gp["y"], z=gp["z"])
 
-            tf = carla.Transform(location=gptz, rotation=rt[j])
+            tf = carla.Transform(location=carla_gp, rotation=rt[j])
             mtx = tf.get_matrix()
 
             p = {"pos": gp, "rot": rot, "normal": [fwd.x, fwd.y, fwd.z], "matrix": mtx}
             poses.append(p)
-            z_rel += 1.0
-            x_rel += 5.0
+
     return poses
 
 def generate_poses_debug(gpt, gridpoints, rt, rotations):
@@ -377,18 +427,45 @@ def generate_poses_debug(gpt, gridpoints, rt, rotations):
 def gen_rotations(rots):
     rotsCarla = []
     for r in rots:
-        rotsCarla.append(carla.Rotation(yaw=r["yaw"], pitch=-r["pitch"], roll=-r["roll"]))
+        rotsCarla.append(carla.Rotation(yaw=r["yaw"], pitch=r["pitch"], roll=r["roll"]))
     return rotsCarla, rots
 
 
+def generate_routes(route_plan_file):
+
+    retval = []
+    routes_json = load_json_file(route_plan_file)
+    routes = []
+    drones = []
+    for rte in routes_json:
+
+        drone_name = rte["name"]
+        drone_speed = rte["speed"]
+        turn_speed = rte["turn_speed"]
+        flight_time = rte["flight_time"]
+        poses = rte["poses"]
+        drones.append((drone_name, drone_speed, turn_speed, flight_time))
+        routes.append(poses)
+
+    return drones, routes
 try:
     # Main loop
-    experiment_name = "test_matrix"
+    experiment_name = "parking_train_eval"
     data_folder = "/home/joakim/data/nerf_data"
     output_folder = os.path.join(data_folder, experiment_name)
     images_folder = os.path.join(output_folder, "images")
+    images_folder_eval = os.path.join(output_folder, "images_eval")
+    images_folder_for_colmap = os.path.join(output_folder, "images_for_colmap")
     file_name = "spectator.txt"
+    active_images_folder = images_folder
+
+    file_name_eval = "spectator_eval.txt"
+    active_file_name = file_name
+
     pose_file_name = "camera_poses.txt"
+    pose_file_name_eval = "camera_poses_eval.txt"
+    active_pose_file_name = pose_file_name
+
     running = True
     while running:
         events = pygame.event.get()
@@ -400,15 +477,65 @@ try:
 
         if keys[pygame.K_r]:
             trashbin.set_transform(initial_transform)
-        elif keys[pygame.K_l]:
-            width, length, height, transform = load_spectator_position(folder=output_folder, filename=file_name)
+
+        elif keys[pygame.K_l]: # load sample grid params
+            active_file_name = file_name
+            active_pose_file_name = pose_file_name
+            active_images_folder = images_folder
+            width, length, height, width_grid, length_grid, height_grid, transform = load_spectator_position(folder=output_folder, filename=active_file_name)
             trashbin.set_transform(transform)
             saved_transform = transform
             width_slider.val, length_slider.val, height_slider.val = width, length, height
+            width_grid_slider.val, length_grid_slider.val, height_grid_slider.val = width_grid, length_grid, height_grid
+            print(f"width_grid_slider.val: {width_grid_slider.val}, length_grid_slider.val: {length_grid_slider.val}, height_grid_slider.val: {height_grid_slider.val},       length_grid: {length_grid}")
+            time.sleep(0.1)
 
-        elif keys[pygame.K_o]:
+
+        elif keys[pygame.K_k]: # load sample grid params for eval poses (for heatmap)
+            active_file_name = file_name_eval
+            active_pose_file_name = pose_file_name_eval
+            active_images_folder = images_folder_eval
+            width, length, height, width_grid, length_grid, height_grid, transform = load_spectator_position(folder=output_folder, filename=active_file_name)
+            trashbin.set_transform(transform)
+            saved_transform = transform
+            width_slider.val, length_slider.val, height_slider.val = width, length, height
+            width_grid_slider.val, length_grid_slider.val, height_grid_slider.val = width_grid, length_grid, height_grid
+            print(f"width_grid_slider.val: {width_grid_slider.val}, length_grid_slider.val: {length_grid_slider.val}, height_grid_slider.val: {height_grid_slider.val}, eval  length_grid: {length_grid}")
+            time.sleep(0.1)
+
+        elif keys[pygame.K_o]: # save sample grid params
             #save_trashbin_transform(trashbin)
-            save_spectator_position(folder=output_folder, filename=file_name, spectator=trashbin, width=width_slider.val, length=length_slider.val, height=height_slider.val)
+            active_file_name = file_name
+            save_spectator_position(folder=output_folder, filename=active_file_name, spectator=trashbin, width=width_slider.val, length=length_slider.val, height=height_slider.val, width_grid=width_grid_slider.val, length_grid=length_grid_slider.val, height_grid=height_grid_slider.val)
+
+        elif keys[pygame.K_i]: # save sample grid params for eval
+            #save_trashbin_transform(trashbin)
+            active_file_name = file_name_eval
+            save_spectator_position(folder=output_folder, filename=active_file_name, spectator=trashbin, width=width_slider.val, length=length_slider.val, height=height_slider.val, width_grid=width_grid_slider.val, length_grid=length_grid_slider.val, height_grid=height_grid_slider.val)
+
+        elif keys[pygame.K_p]: # visualise plan
+            #save_trashbin_transform(trashbin)
+            route_plan_file = os.path.join("..", "nerf_data", experiment_name, "opt_route.json")
+            drones, routes = generate_routes(route_plan_file)
+
+            for rt, clr in zip(routes, colors):
+                draw_plan(world=world, route=rt, lifetime=30.0, color=clr)
+
+        elif keys[pygame.K_x]:
+
+            route_plan_file = os.path.join("..", "nerf_data", experiment_name, "opt_route.json")
+            drones, routes = generate_routes(route_plan_file)
+
+            simulation_thread = MultiDroneDataCollection(world, drones, routes, colors)
+            # Run the simulation
+            # Start the simulation thread
+            simulation_thread.start()
+
+            # Optionally, you can join the thread if you want the main program to wait for the simulation to finish
+            # simulation_thread.join()
+            #print('Spawn drones in front of spectator')
+            time.sleep(0.3)
+
 
         elif keys[pygame.K_b]:
             save_box_edges(saved_transform, width_slider.val, length_slider.val, height_slider.val)
@@ -416,31 +543,32 @@ try:
             draw_box_edges(world, trashbin, width_slider.val, length_slider.val, height_slider.val, lifetime=5.0)
         elif keys[pygame.K_y]:
             if saved_box_edges != None:
-                #gridpoints, gridpos = extract_grid_transforms(N=int(width_grid_slider.val), M=int(length_grid_slider.val), K=int(height_grid_slider.val))
+                locationObjects, gridpos = extract_grid_transforms(N=int(width_grid_slider.val), M=int(length_grid_slider.val), K=int(height_grid_slider.val))
 
+                rots = []
                 # this returns a single point in which we spawn our test vectors
-                locationObjects, gridpos = extract_grid_transforms(N=6, M=1, K=1)
+                #locationObjects, gridpos = extract_grid_transforms(N=6, M=1, K=1)
 
                 #rotations = [carla.Rotation(yaw=0, pitch=-90, roll=0)]
                 #Test vectors to find out how they are mapped out in NeRFStudio
-                rots = [{"roll": 0, "pitch": 0, "yaw": 0},
-                        {"roll": 0, "pitch": 0, "yaw": 45},
-                        {"roll": 0, "pitch": 0, "yaw": 90},
-                        {"roll": 0, "pitch": 0, "yaw": 135},
-                        {"roll": 5, "pitch": 0, "yaw": 180},
-                        {"roll": 5, "pitch": 0, "yaw": 180}
-                        ]
-                rotationObjects, rots = gen_rotations(rots) # make sure we always define them in with the same conventions
+                # rots = [{"roll": 0, "pitch": 0, "yaw": 0},
+                #         {"roll": 0, "pitch": 0, "yaw": 45},
+                #         {"roll": 0, "pitch": 0, "yaw": 90},
+                #         {"roll": 0, "pitch": 0, "yaw": 135},
+                #         {"roll": 0, "pitch": 0, "yaw": 180},
+                #         {"roll": 0, "pitch": 0, "yaw": 180}
+                #         ]
 
                 # for y in [0, 90, 180, 270]:
                 #     rotations.append(carla.Rotation(yaw=y, pitch=-45, roll=0))
                 #     rots.append({"roll": 0, "pitch": -45, "yaw": y})
-                #for y in [0, 45, 90, 135, 180, 225, 270, 315]:
-                #    rotations.append(carla.Rotation(yaw=-y, pitch=-30, roll=0))
-                #    rots.append({"roll": 0, "pitch": -30, "yaw": y})
+                for y in [0, 45, 90, 135, 180, 225, 270, 315]:
+                   #rotations.append(carla.Rotation(yaw=-y, pitch=-30, roll=0))
+                   rots.append({"roll": 0, "pitch": -30, "yaw": y})
+                rotationObjects, rots = gen_rotations(rots) # make sure we always define them in with the same conventions
 
-                poses = generate_poses_debug(locationObjects, gridpos, rotationObjects, rots)
-                full_pose = os.path.join(output_folder, pose_file_name)
+                poses = generate_poses(locationObjects, gridpos, rotationObjects, rots)
+                full_pose = os.path.join(output_folder, active_pose_file_name)
                 with open(full_pose, 'w') as outfile:
                     json.dump({"poses": poses}, outfile, indent=4, default=vars)
 
@@ -455,7 +583,8 @@ try:
                     r = carla.Rotation(yaw=pose["rot"]["yaw"], pitch=pose["rot"]["pitch"], roll=pose["rot"]["roll"])
                     pt = carla.Location(x=pose["pos"]["x"], y=pose["pos"]["y"], z=pose["pos"]["z"])
                     trashbin.set_transform(carla.Transform(pt, r))
-                    save_image_and_pose(image=image, filename=f"pose_{i:05d}", destination_folder=images_folder, pose=pose)
+                    prefix = "train_pose" if active_pose_file_name == pose_file_name else "eval_pose"
+                    save_image_and_pose(image=image, filename=f"{prefix}_{i:05d}", destination_folder=active_images_folder, pose=pose)
                     #print(f"Image {i} out of {l} saved.")
                     #pbar.update(i)
 
@@ -483,9 +612,11 @@ try:
 
         # Draw labels for sliders
         font = pygame.font.Font(None, 36)
+        active_label = font.render(f"Active: {active_file_name}", True, (255, 255, 255))
         width_label = font.render(f"Width: {int(width_slider.val)}", True, (255, 255, 255))
         length_label = font.render(f"Length: {int(length_slider.val)}", True, (255, 255, 255))
         height_label = font.render(f"Height: {int(height_slider.val)}", True, (255, 255, 255))
+        display.blit(active_label, (50, display_height - 140))
         display.blit(width_label, (50, display_height - 110))
         display.blit(length_label, (300, display_height - 110))
         display.blit(height_label, (550, display_height - 110))

@@ -26,6 +26,24 @@ drones_blueprint_array = [
     'static.prop.drone_x500'
 ]
 
+
+# Define three alternative trajectory functions
+def route_trajectory(start_transform, end_transform, step, n_steps):
+    # Calculate the step size for each component
+    step_size = [(end_transform.location.x - start_transform.location.x) / n_steps,
+                 (end_transform.location.y - start_transform.location.y) / n_steps,
+                 (end_transform.location.z - start_transform.location.z) / n_steps]
+
+    # Calculate the new location
+    new_location = carla.Location(
+        x=start_transform.location.x + step * step_size[0],
+        y=start_transform.location.y + step * step_size[1],
+        z=start_transform.location.z + step * step_size[2]
+    )
+
+    return new_location
+
+
 # Define three alternative trajectory functions
 def linear_trajectory(start_transform, end_transform, step, n_steps):
     # Calculate the step size for each component
@@ -82,12 +100,14 @@ def circular_trajectory(start_transform, end_transform, step, n_steps):
 
 
 class DroneThread(threading.Thread):
-    def __init__(self, world, start_transform, end_transform, trajectory_function=linear_trajectory):
+    def __init__(self, world, start_transform, end_transform, trajectory_function=linear_trajectory, drone_name=None, timestamps=None):
         threading.Thread.__init__(self)
         self.world = world
         self.start_transform = start_transform
         self.end_transform = end_transform
         self.trajectory_function = trajectory_function
+        self.drone_name = drone_name
+        self.timestamps = timestamps
 
     def run(self):
         try:
@@ -102,7 +122,7 @@ class DroneThread(threading.Thread):
             # actors into the simulation.
             blueprint_library = self.world.get_blueprint_library()
 
-            drone_name = random.choice(drones_blueprint_array)
+            drone_name = self.drone_name if self.drone_name else random.choice(drones_blueprint_array)
 
             bp = blueprint_library.find(drone_name)
 
@@ -114,15 +134,36 @@ class DroneThread(threading.Thread):
             n_steps = 100
             m_time = 10.0
 
-            # Move the object to the ending transform in n steps using the specified trajectory function
-            for step in range(n_steps):
-                new_location = self.trajectory_function(self.start_transform, self.end_transform, step, n_steps)
+            start = 0
 
-                # Set the new transform
-                vehicle.set_transform(carla.Transform(new_location, self.start_transform.rotation))
+            end = 0
+            if len(self.end_transform) == 1:
+                # Move the object to the ending transform in n steps using the specified trajectory function
+                for step in range(n_steps):
+                    new_location = self.trajectory_function(self.start_transform, self.end_transform, step, n_steps)
 
-                # Wait for m_time / n_steps seconds
-                time.sleep(m_time / n_steps)
+                    # Set the new transform
+                    vehicle.set_transform(carla.Transform(new_location, self.start_transform.rotation))
+
+                    # Wait for m_time / n_steps seconds
+                    time.sleep(m_time / n_steps)
+            else:
+                # assume end_transform is a list of route pts
+                #m_time = self.timestamps[1] - self.timestamps[0]
+
+                start_pt = self.start_transform
+                for i in range(len(self.end_transform)):
+                    if i==0:
+                        continue
+                    m_time = self.timestamps[i] - self.timestamps[i-1]
+                    print(f"waypoint {i} passed.")
+                    for step in range(n_steps):
+                        new_location = self.trajectory_function(self.end_transform[i-1], self.end_transform[i], step, n_steps)
+                        vehicle.set_transform(carla.Transform(new_location, self.start_transform.rotation))
+
+                        time.sleep(m_time / n_steps)
+
+
         except Exception as e:
             print(e)
         finally:
@@ -173,6 +214,52 @@ class MultiDroneSimulation(threading.Thread):
         except KeyboardInterrupt:
             pass
 
+
+class MultiDroneDataCollection(threading.Thread):
+    def __init__(self, world, drones, routes, colors):
+        threading.Thread.__init__(self)
+        self.drones = drones
+        self.routes = routes
+        self.num_drones = len(drones)
+        self.world = world
+        self.colors = [colors[i] for i in range(len(routes))]
+
+    def run(self):
+        try:
+            # Create and start threads for flying drones
+            threads = []
+            for drone, route, clr in zip(self.drones, self.routes, self.colors):
+                poses = []
+                arrival_times = []
+                departure_times = []
+                (drone_name, drone_speed, turn_speed, flight_time) = drone
+                for i, pt in enumerate(route):
+                    pose = carla.Transform(carla.Location(pt["pos"]["x"], pt["pos"]["y"], pt["pos"]["z"]),
+                                           carla.Rotation(pitch=pt["rot"]["pitch"], roll=pt["rot"]["roll"], yaw=pt["rot"]["yaw"]))
+                # carla.Rotation(roll=pt["rot"]["roll"], pitch=pt["rot"]["pitch"], yaw=pt["rot"]["yaw"]))
+                    poses.append(pose)
+                    arrival_times.append(pt["time_arrive"])
+                    departure_times.append(pt["time_depart"])
+
+                    if i==0:
+                        start_transform = pose
+
+
+                trajectory_functions = [route_trajectory, linear_trajectory, sinusoidal_trajectory, circular_trajectory]
+                selected_trajectory_function = route_trajectory
+                print(f"starting drone {drone_name}")
+
+                # Create DroneThread object with world, start_transform, end_transform, and randomly selected trajectory function.
+                thread = DroneThread(self.world, start_transform, poses, trajectory_function=selected_trajectory_function, drone_name=drone_name, timestamps=arrival_times)
+                thread.start()
+                threads.append(thread)
+
+            # Wait for all threads to finish
+            for thread in threads:
+                thread.join()
+
+        except KeyboardInterrupt:
+            pass
 
 
 
