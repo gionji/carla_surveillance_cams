@@ -2,6 +2,8 @@ import os
 import shutil
 import json
 import re
+import subprocess
+
 
 def extract_number(filename):
     # Extracts the first sequence of digits found in the filename
@@ -50,12 +52,12 @@ def organize_files(dataset_dir, directories, destination_folder, mapping_file):
     prefix = 'frame'  # Change this to the desired prefix
 
     # Example usage
-    dataset_dir = '../nerf_data/parking_train_eval'
-    directories = ['images', 'images_eval']
-    destination_folder = 'joined_images'
+    #dataset_dir = '../nerf_data/parking_train_eval'
+    #directories = ['images', 'images_eval']
+    #destination_folder = 'joined_images'
     suffix = 'png'  # Change this to the suffix of your files
     prefix = 'frame'  # Change this to the desired prefix
-    mapping_file = os.path.join(dataset_dir, 'filename_mapping.json')
+    #mapping_file = os.path.join(dataset_dir, 'filename_mapping.json')
 
     copy_and_rename_files(dataset_dir, directories, destination_folder, suffix, prefix, mapping_file)
 
@@ -99,8 +101,10 @@ def process_frames(data, mapping_file, eval_string, keep=False):
 
 def remove_eval_frames(dataset_dir, directories, results_folder, mapping_file):
 
+    # this always contains both train and eval images
     transforms_path = os.path.join(dataset_dir, results_folder, 'transforms.json')
     backup_transforms_path = os.path.join(dataset_dir, results_folder, 'backup_transforms.json')
+
     renamed_transforms_path = os.path.join(dataset_dir, results_folder, 'joined_transforms.json')
     eval_transforms_path = os.path.join(dataset_dir, results_folder, 'eval_transforms.json')
 
@@ -126,7 +130,7 @@ def remove_eval_frames(dataset_dir, directories, results_folder, mapping_file):
 
 def main():
 
-    dataset_dir = '../nerf_data/parking_train_eval'
+    dataset_dir = '../nerf_data/parking_sparse'
     directories = ['images', 'images_eval']
     destination_folder = 'joined_images'
     results_folder = 'results'
@@ -137,7 +141,7 @@ def main():
     # information for both the training and eval frames
 
     # run this to join training and eval files for the COLMAP mapping process
-    #organize_files(dataset_dir, directories, destination_folder, mapping_file)
+    organize_files(dataset_dir, directories, destination_folder, mapping_file)
 
     # run colmap here:
     # ns-process-data images --data joined_images --output-dir results
@@ -149,5 +153,97 @@ def main():
     # run training here:
 
 
+def find_png_files(root_dir, folders):
+    png_files = []
+    for folder in folders:
+        folder_path = os.path.join(root_dir, folder)
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                if file.endswith('.png'):
+                    relative_path = os.path.relpath(os.path.join(root, file), root_dir)
+                    png_files.append(relative_path)
+    return png_files
 
-main()
+def write_to_file(file_list, output_file):
+    with open(output_file, 'w') as f:
+        for item in file_list:
+            f.write(f"{item}\n")
+
+
+def get_folders_with_prefix(root_dir, prefix):
+    folders = []
+    for folder_name in os.listdir(root_dir):
+        folder_path = os.path.join(root_dir, folder_name)
+        if os.path.isdir(folder_path) and folder_name.startswith(prefix):
+            folders.append(folder_name)
+    return folders
+
+
+def gen_added_images_list(dataset_dir):
+
+
+    folders_list = get_folders_with_prefix(root_dir=dataset_dir, prefix="added_images")
+
+    output_filename = os.path.join(dataset_dir, "added_images.txt")
+
+    # Find all PNG files and write them to a file
+    png_files = find_png_files(dataset_dir, folders_list)
+    write_to_file(png_files, output_filename)
+
+#print(f"Found {len(png_files)} .png files. List written to {output_filename}.")
+
+
+# Load the JSON file
+def load_json(file_path):
+    with open(file_path, 'r') as file:
+        data = json.load(file)
+    return data
+
+
+def display_image(images, text):
+
+    for img, txt in zip(images, text):
+
+        # Open the images
+        try:
+            image = cv2.imread(img)
+            # Plot the images side by side
+            # fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+            # ax[0].imshow(image)
+            # ax[0].set_title(f"Rendered Image (Frame {img} with quality {txt})")
+            # ax[0].axis('off')
+            #
+            # plt.show()
+
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.6
+            thickness = 2
+            color = (255, 255, 0)  # Blue text
+            img = cv2.putText(image, txt, (10, 10), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.imshow(txt, image)
+            cv2.waitKey(0)
+
+        except FileNotFoundError:
+            print(f"Image for frame {img} not found, skipping...")
+            continue
+
+
+
+# def register_new_images(dataset_dir):
+#
+#     path_to_database = os.path.join(dataset_dir, "results/colmap/database.db")
+#     path_to_images = os.path.join(dataset_dir, "results/images")
+#
+#     cmd = ["colmap feature_extractor",
+#      "--database_path", path_to_database,
+#     "--image_path", path_to_images,
+#     "--image_list_path", os.path.join(dataset_dir, "added_images_list.txt")
+#     ]
+#
+#     subprocess.run(cmd)
+
+#dataset_dir = '../nerf_data/test_fuse'
+
+#register_new_images(dataset_dir)
+#gen_added_images_list(dataset_dir)
+#main()

@@ -24,10 +24,10 @@ display_height = 1000
 display = pygame.display.set_mode((display_width, display_height))
 pygame.display.set_caption("CARLA Spectator View")
 
-colors = [carla.Color(0,230,255, 128),
-          carla.Color(0, 230, 0, 128),
-          carla.Color(100,115, 0,128),
-          carla.Color(230, 0, 230, 128)
+colors = [carla.Color(125, 14, 255),
+          carla.Color(255, 56, 14),
+          carla.Color(115, 0,128),
+          carla.Color(0, 230, 128)
 
           ]
 
@@ -144,9 +144,9 @@ def save_box_edges(trashbin, width, length, height):
     print("Done.")
 
 
-def draw_plan(world, route, lifetime=0.1, color=carla.Color(255, 0, 0)):
+def draw_plan(world, route, lifetime, color, drone_name):
 
-    print(f"Drawing route w color {color}")
+    print(f"Drawing {drone_name} route w color {color}")
     # Draw points at each edge
     locs = []
     for i, pt in enumerate(route):
@@ -447,10 +447,13 @@ def generate_routes(route_plan_file):
         drones.append((drone_name, drone_speed, turn_speed, flight_time))
         routes.append(poses)
 
+    print(drones)
+    print(routes)
     return drones, routes
+
 try:
     # Main loop
-    experiment_name = "parking_train_eval"
+    experiment_name = "parking_sparse"
     data_folder = "/home/joakim/data/nerf_data"
     output_folder = os.path.join(data_folder, experiment_name)
     images_folder = os.path.join(output_folder, "images")
@@ -476,7 +479,8 @@ try:
         keys = pygame.key.get_pressed()
 
         if keys[pygame.K_r]:
-            trashbin.set_transform(initial_transform)
+            default_transform = carla.Transform(carla.Location(x=306, y=-210, z=50), carla.Rotation(roll=0, pitch=-45, yaw=180))
+            trashbin.set_transform(default_transform)
 
         elif keys[pygame.K_l]: # load sample grid params
             active_file_name = file_name
@@ -515,18 +519,33 @@ try:
 
         elif keys[pygame.K_p]: # visualise plan
             #save_trashbin_transform(trashbin)
-            route_plan_file = os.path.join("..", "nerf_data", experiment_name, "opt_route.json")
+            route_plan_file = os.path.join("..", "nerf_data", experiment_name, "opt_route_15_epochs.json")
             drones, routes = generate_routes(route_plan_file)
 
-            for rt, clr in zip(routes, colors):
-                draw_plan(world=world, route=rt, lifetime=30.0, color=clr)
+            for rt, clr, drone in zip(routes, colors, drones):
+                (drone_name, drone_speed, turn_speed, flight_time) = drone
+                draw_plan(world=world, route=rt, lifetime=30.0, color=clr, drone_name=drone_name)
+
+        elif keys[pygame.K_m]:
+            # spawn a pergola
+            blueprint_library = world.get_blueprint_library()
+
+            pergola_name = "static.prop.pergola"
+
+            bp = blueprint_library.find(pergola_name)
+
+            loc = carla.Location(x=281.5, y=-221.6, z=1.5)
+            # Spawn the object at the starting transform
+            pergola = world.spawn_actor(bp, carla.Transform(loc, carla.Rotation(0,0,0)))
+
+
 
         elif keys[pygame.K_x]:
 
-            route_plan_file = os.path.join("..", "nerf_data", experiment_name, "opt_route.json")
+            route_plan_file = os.path.join("..", "nerf_data", experiment_name, "opt_route_15_epochs.json")
             drones, routes = generate_routes(route_plan_file)
 
-            simulation_thread = MultiDroneDataCollection(world, drones, routes, colors)
+            simulation_thread = MultiDroneDataCollection(world, drones, routes, colors, display_width, display_height, experiment_name)
             # Run the simulation
             # Start the simulation thread
             simulation_thread.start()

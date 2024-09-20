@@ -1,11 +1,16 @@
-import datetime
+from datetime import datetime
 import glob
+import json
 import os
 import sys
 import random
 import time
 import threading
 import math
+
+import cv2
+import numpy as np
+
 
 try:
     import carla
@@ -100,20 +105,63 @@ def circular_trajectory(start_transform, end_transform, step, n_steps):
 
 
 class DroneThread(threading.Thread):
-    def __init__(self, world, start_transform, end_transform, trajectory_function=linear_trajectory, drone_name=None, timestamps=None):
+    def __init__(self, world, start_transform, end_transform, trajectory_function=linear_trajectory, drone_name=None, timestamps=None, display_width=None, display_height=None, exp_name="test"):
         threading.Thread.__init__(self)
+
+        self.camera = None
         self.world = world
         self.start_transform = start_transform
         self.end_transform = end_transform
         self.trajectory_function = trajectory_function
         self.drone_name = drone_name
-        self.timestamps = timestamps
+        self.display_width=display_width
+        self.display_height=display_height
+        self.capture_images = None
+        self.image = None
+
+        self.experiment_name = exp_name
+        data_folder = "/home/joakim/data/nerf_data"
+        output_folder = os.path.join(data_folder, self.experiment_name)
+        self.added_images_folder = os.path.join(output_folder, f"added_images_{self.drone_name}")
+
+
+        if timestamps:
+            (self.arrivals, self.departures) = timestamps
+            self.capture_images = True
+
+        else:
+            self.capture_images = False
 
     def run(self):
         try:
             self.fly_drone()
         except Exception as e:
             print("Error while flying drone:", e)
+
+    def save_image_and_pose(self, image, filename, destination_folder, pose, t_snap):
+        # Ensure the destination folder exists
+        time.sleep(t_snap)
+        os.makedirs(destination_folder, exist_ok=True)
+
+        # Create the full path for the image file
+        image_path = os.path.join(destination_folder, f"{filename}.png")
+
+        # Save the image using OpenCV
+        cv2.imwrite(image_path, image)
+
+        # Create the full path for the annotation file
+        annotation_path = os.path.join(destination_folder, f"{filename}.txt")
+
+        pose_dict = {}
+        fwd = pose.rotation.get_forward_vector()
+        mtx = pose.get_matrix()
+
+        p_dict = {"pos": {"x": pose.location.x, "y": pose.location.y, "z": pose.location.z}, "rot": {"roll": pose.rotation.roll, "pitch": pose.rotation.pitch, "yaw": pose.rotation.yaw}, "normal": [fwd.x, fwd.y, fwd.z], "matrix": mtx}
+
+        # Write the location and rotation data to the file
+        with open(annotation_path, 'w') as f:
+            json.dump(p_dict, f, indent=4, default=vars)
+
 
     def fly_drone(self):
         objects_list = []
@@ -130,6 +178,30 @@ class DroneThread(threading.Thread):
             vehicle = self.world.spawn_actor(bp, self.start_transform)
             objects_list.append(vehicle)
 
+            if self.capture_images:
+
+                # Create a camera sensor
+                camera_bp = blueprint_library.find('sensor.camera.rgb')
+                camera_bp.set_attribute('image_size_x', str(self.display_width))
+                camera_bp.set_attribute('image_size_y', str(self.display_height))
+                camera_bp.set_attribute('fov', '110')
+
+                # Attach the camera to the trashbin
+                relative_transform = carla.Transform(carla.Location(x=0, y=0, z=-1.3))
+                self.camera = self.world.try_spawn_actor(camera_bp, relative_transform, attach_to=vehicle)
+
+
+            def process_im(data):
+
+                array = np.frombuffer(data.raw_data, dtype=np.dtype("uint8"))
+                array = np.reshape(array, (data.height, data.width, 4))
+                array = array[:, :, :3]
+                self.image = array
+
+            # Attach the callback to the camera
+            self.camera.listen(process_im)
+
+
             # Calculate the step size for each component
             n_steps = 100
             m_time = 10.0
@@ -143,6 +215,7 @@ class DroneThread(threading.Thread):
                     new_location = self.trajectory_function(self.start_transform, self.end_transform, step, n_steps)
 
                     # Set the new transform
+                    new_location.location.z += 1.3
                     vehicle.set_transform(carla.Transform(new_location, self.start_transform.rotation))
 
                     # Wait for m_time / n_steps seconds
@@ -152,16 +225,34 @@ class DroneThread(threading.Thread):
                 #m_time = self.timestamps[1] - self.timestamps[0]
 
                 start_pt = self.start_transform
-                for i in range(len(self.end_transform)):
+                for i in range(len(self.end_transform)): # over all waypoints
                     if i==0:
                         continue
-                    m_time = self.timestamps[i] - self.timestamps[i-1]
-                    print(f"waypoint {i} passed.")
+                    if self.capture_images:
+                        m_time = self.arrivals[i] - self.departures[i-1]
+                    else:
+                        m_time = 10.0
+
+                    print(f"waypoint {i} reached.")
                     for step in range(n_steps):
                         new_location = self.trajectory_function(self.end_transform[i-1], self.end_transform[i], step, n_steps)
                         vehicle.set_transform(carla.Transform(new_location, self.start_transform.rotation))
 
                         time.sleep(m_time / n_steps)
+
+                    if self.capture_images:
+                        # now we have arrived, start taking picture
+
+                        pose = self.end_transform[i]
+                        vehicle.set_transform(pose)
+                        prefix = "added_pose"
+                        time_for_snapshot = self.departures[i] - self.arrivals[i]
+                        self.save_image_and_pose(image=self.image, filename=f"{prefix}_{i:05d}",
+                                            destination_folder=self.added_images_folder, pose=pose, t_snap=time_for_snapshot)
+
+                        t_now = time.localtime()
+                        current_time = time.strftime("%H:%M:%S", t_now)
+                        print(f"[{self.drone_name}]: image {i} grabbed at time {current_time}, delayed for {time_for_snapshot} s, and saved at {self.added_images_folder}.")
 
 
         except Exception as e:
@@ -216,13 +307,16 @@ class MultiDroneSimulation(threading.Thread):
 
 
 class MultiDroneDataCollection(threading.Thread):
-    def __init__(self, world, drones, routes, colors):
+    def __init__(self, world, drones, routes, colors, display_width=None, display_height=None, exp_name="test"):
         threading.Thread.__init__(self)
         self.drones = drones
         self.routes = routes
         self.num_drones = len(drones)
         self.world = world
+        self.display_width = display_width
+        self.display_height = display_height
         self.colors = [colors[i] for i in range(len(routes))]
+        self.exp_name = exp_name
 
     def run(self):
         try:
@@ -250,7 +344,7 @@ class MultiDroneDataCollection(threading.Thread):
                 print(f"starting drone {drone_name}")
 
                 # Create DroneThread object with world, start_transform, end_transform, and randomly selected trajectory function.
-                thread = DroneThread(self.world, start_transform, poses, trajectory_function=selected_trajectory_function, drone_name=drone_name, timestamps=arrival_times)
+                thread = DroneThread(self.world, start_transform, poses, trajectory_function=selected_trajectory_function, drone_name=drone_name, timestamps=(arrival_times, departure_times), display_width=self.display_width, display_height=self.display_height, exp_name=self.exp_name)
                 thread.start()
                 threads.append(thread)
 
