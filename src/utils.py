@@ -51,19 +51,11 @@ def organize_files(dataset_dir, directories, destination_folder, mapping_file):
     suffix = 'png'  # Change this to the suffix of your files
     prefix = 'frame'  # Change this to the desired prefix
 
-    # Example usage
-    #dataset_dir = '../nerf_data/parking_train_eval'
-    #directories = ['images', 'images_eval']
-    #destination_folder = 'joined_images'
-    suffix = 'png'  # Change this to the suffix of your files
-    prefix = 'frame'  # Change this to the desired prefix
-    #mapping_file = os.path.join(dataset_dir, 'filename_mapping.json')
-
     copy_and_rename_files(dataset_dir, directories, destination_folder, suffix, prefix, mapping_file)
 
     # Example of loading the mapping later
-    mapping = load_mapping(mapping_file)
-    print(mapping)
+    #mapping = load_mapping(mapping_file)
+    #print(mapping)
 
 
 def load_json_file(file_path):
@@ -131,7 +123,7 @@ def remove_eval_frames(dataset_dir, directories, results_folder, mapping_file):
 def main():
 
     dataset_dir = '../nerf_data/parking_sparse'
-    directories = ['images', 'images_eval']
+    directories = ['images', 'images_eval'] # always keep this order to facilitate naming of files later
     destination_folder = 'joined_images'
     results_folder = 'results'
 

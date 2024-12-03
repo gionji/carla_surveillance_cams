@@ -392,6 +392,8 @@ def save_image_and_pose(image, filename, destination_folder, pose):
 def generate_poses(gpt, gridpoints, rt, rotations):
     poses = []
 
+    pose_number = 1
+
     for i, gp in enumerate(gridpoints):
         for j, rot in enumerate(rotations):
             fwd = rt[j].get_forward_vector()
@@ -406,8 +408,9 @@ def generate_poses(gpt, gridpoints, rt, rotations):
             tf = carla.Transform(location=carla_gp, rotation=rt[j])
             mtx = tf.get_matrix()
 
-            p = {"pos": gp, "rot": rot, "normal": [fwd.x, fwd.y, fwd.z], "matrix": mtx}
+            p = {"id": pose_number, "pos": gp, "rot": rot, "normal": [fwd.x, fwd.y, fwd.z], "matrix": mtx}
             poses.append(p)
+            pose_number += 1
 
     return poses
 
@@ -431,7 +434,7 @@ def gen_rotations(rots):
     return rotsCarla, rots
 
 
-def generate_routes(route_plan_file):
+def generate_routes(route_plan_file, slow=False):
 
     retval = []
     routes_json = load_json_file(route_plan_file)
@@ -440,7 +443,7 @@ def generate_routes(route_plan_file):
     for rte in routes_json:
 
         drone_name = rte["name"]
-        drone_speed = rte["speed"]
+        drone_speed = rte["speed"]/100.0
         turn_speed = rte["turn_speed"]
         flight_time = rte["flight_time"]
         poses = rte["poses"]
@@ -453,7 +456,7 @@ def generate_routes(route_plan_file):
 
 try:
     # Main loop
-    experiment_name = "parking_sparse"
+    experiment_name = "pergola"
     data_folder = "/home/joakim/data/nerf_data"
     output_folder = os.path.join(data_folder, experiment_name)
     images_folder = os.path.join(output_folder, "images")
@@ -465,8 +468,8 @@ try:
     file_name_eval = "spectator_eval.txt"
     active_file_name = file_name
 
-    pose_file_name = "camera_poses.txt"
-    pose_file_name_eval = "camera_poses_eval.txt"
+    pose_file_name = "camera_poses.json"
+    pose_file_name_eval = "camera_poses_eval.json"
     active_pose_file_name = pose_file_name
 
     running = True
@@ -555,6 +558,20 @@ try:
             #print('Spawn drones in front of spectator')
             time.sleep(0.3)
 
+        elif keys[pygame.K_z]:
+
+            route_plan_file = os.path.join("..", "nerf_data", experiment_name, "opt_route_15_epochs.json")
+            drones, routes = generate_routes(route_plan_file=route_plan_file, slow=True)
+
+            simulation_thread = MultiDroneDataCollection(world, drones, routes, colors, display_width, display_height, experiment_name, False)
+            # Run the simulation
+            # Start the simulation thread
+            simulation_thread.start()
+
+            # Optionally, you can join the thread if you want the main program to wait for the simulation to finish
+            # simulation_thread.join()
+            #print('Spawn drones in front of spectator')
+            time.sleep(0.3)
 
         elif keys[pygame.K_b]:
             save_box_edges(saved_transform, width_slider.val, length_slider.val, height_slider.val)
@@ -603,7 +620,8 @@ try:
                     pt = carla.Location(x=pose["pos"]["x"], y=pose["pos"]["y"], z=pose["pos"]["z"])
                     trashbin.set_transform(carla.Transform(pt, r))
                     prefix = "train_pose" if active_pose_file_name == pose_file_name else "eval_pose"
-                    save_image_and_pose(image=image, filename=f"{prefix}_{i:05d}", destination_folder=active_images_folder, pose=pose)
+                    pose_number = pose["id"]
+                    save_image_and_pose(image=image, filename=f"{prefix}_{pose_number:05d}", destination_folder=active_images_folder, pose=pose)
                     #print(f"Image {i} out of {l} saved.")
                     #pbar.update(i)
 

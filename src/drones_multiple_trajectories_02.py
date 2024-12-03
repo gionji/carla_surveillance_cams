@@ -105,7 +105,7 @@ def circular_trajectory(start_transform, end_transform, step, n_steps):
 
 
 class DroneThread(threading.Thread):
-    def __init__(self, world, start_transform, end_transform, trajectory_function=linear_trajectory, drone_name=None, timestamps=None, display_width=None, display_height=None, exp_name="test"):
+    def __init__(self, world, start_transform, end_transform, trajectory_function=linear_trajectory, drone_name=None, timestamps=None, display_width=None, display_height=None, exp_name="test", captureImages=False):
         threading.Thread.__init__(self)
 
         self.camera = None
@@ -116,7 +116,7 @@ class DroneThread(threading.Thread):
         self.drone_name = drone_name
         self.display_width=display_width
         self.display_height=display_height
-        self.capture_images = None
+        self.capture_images = captureImages
         self.image = None
 
         self.experiment_name = exp_name
@@ -127,10 +127,10 @@ class DroneThread(threading.Thread):
 
         if timestamps:
             (self.arrivals, self.departures) = timestamps
-            self.capture_images = True
+            #self.capture_images = True
 
-        else:
-            self.capture_images = False
+        #else:
+            #self.capture_images = False
 
     def run(self):
         try:
@@ -307,7 +307,7 @@ class MultiDroneSimulation(threading.Thread):
 
 
 class MultiDroneDataCollection(threading.Thread):
-    def __init__(self, world, drones, routes, colors, display_width=None, display_height=None, exp_name="test"):
+    def __init__(self, world, drones, routes, colors, display_width=None, display_height=None, exp_name="test", captureImages=True):
         threading.Thread.__init__(self)
         self.drones = drones
         self.routes = routes
@@ -317,6 +317,7 @@ class MultiDroneDataCollection(threading.Thread):
         self.display_height = display_height
         self.colors = [colors[i] for i in range(len(routes))]
         self.exp_name = exp_name
+        self.captureImages = captureImages
 
     def run(self):
         try:
@@ -344,7 +345,7 @@ class MultiDroneDataCollection(threading.Thread):
                 print(f"starting drone {drone_name}")
 
                 # Create DroneThread object with world, start_transform, end_transform, and randomly selected trajectory function.
-                thread = DroneThread(self.world, start_transform, poses, trajectory_function=selected_trajectory_function, drone_name=drone_name, timestamps=(arrival_times, departure_times), display_width=self.display_width, display_height=self.display_height, exp_name=self.exp_name)
+                thread = DroneThread(self.world, start_transform, poses, trajectory_function=selected_trajectory_function, drone_name=drone_name, timestamps=(arrival_times, departure_times), display_width=self.display_width, display_height=self.display_height, exp_name=self.exp_name, captureImages=self.captureImages)
                 thread.start()
                 threads.append(thread)
 

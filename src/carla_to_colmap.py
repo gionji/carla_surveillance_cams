@@ -23,7 +23,7 @@ def euler_to_rotation_matrix(pitch, yaw, roll):
     yaw_rad = np.deg2rad(yaw)
 
     # Create a rotation object using the euler angles
-    rotation = Rot.from_euler('yzx', [pitch_rad, yaw_rad, roll_rad])
+    rotation = Rot.from_euler('xyz', [pitch_rad, yaw_rad, roll_rad])
 
     # Return the rotation matrix
     return rotation.as_matrix()
@@ -119,7 +119,8 @@ def convert_poses_to_colmap(folder, json_file):
 
     frames = []
 
-    for idx, pose in enumerate(data["poses"]):
+    for pose in data["poses"]:
+        idx = pose["id"]
         pos = pose["pos"]
         roll = pose["rot"]["roll"]
         pitch = pose["rot"]["pitch"]
@@ -128,13 +129,13 @@ def convert_poses_to_colmap(folder, json_file):
         mtx = pose["matrix"]
 
         # Get the rotation matrix
-        rotation_matrix = euler_to_rotation_matrix(roll, pitch, yaw)
+        #rotation_matrix = euler_to_rotation_matrix(roll, pitch, yaw)
 
         # Get the homogeneous transformation matrix
-        homogeneous_matrix = mtx #create_homogeneous_matrix(pos, rotation_matrix)
+        #homogeneous_matrix = create_homogeneous_matrix(pos, rotation_matrix)
 
         # Convert matrix to nested lists for JSON serialization
-        transform_matrix_list = homogeneous_matrix.tolist()
+        transform_matrix_list = mtx #homogeneous_matrix.tolist()
 
         # Create frame dictionary
         frame = {
@@ -165,22 +166,8 @@ def save_to_json(folder, output_file, frames):
 
 if __name__ == "__main__":
     print(f"folder: {os.getcwd()}")
-    folder = "../nerf_data/test_normal"
-    input_json = 'camera_poses.txt'  # Replace with your input JSON file path
-    #rotation_output_txt = 'rotation_output.txt'  # Replace with your desired rotation matrices output file path
-    #transform_output_txt = 'transform_output.txt'  # Replace with your desired homogeneous matrices output file path
-
-    # Convert poses to rotation matrices and homogeneous matrices
-    #rotation_matrices, homogeneous_matrices = convert_poses_to_colmap(folder, input_json)
-
-    # Save rotation matrices to a file
-    #save_matrices(folder, rotation_matrices, rotation_output_txt)
-
-    # Save homogeneous transformation matrices to a file
-    #save_matrices(folder, homogeneous_matrices, transform_output_txt)
-
-    #print(f"Rotation matrices saved to {rotation_output_txt}")
-    #print(f"Homogeneous transformation matrices saved to {transform_output_txt}")
+    folder = "../nerf_data/pergola"
+    input_json = 'camera_poses.json'  # Replace with your input JSON file path
 
 
     output_json = 'transforms.json'  # Replace with your desired output JSON file path
